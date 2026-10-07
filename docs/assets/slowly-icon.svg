@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Slowly">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fdf6ec"/>
+      <stop offset="100%" stop-color="#f6e3d3"/>
+    </linearGradient>
+    <linearGradient id="spiral" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#e8a17c"/>
+      <stop offset="55%" stop-color="#c96a49"/>
+      <stop offset="100%" stop-color="#8fa98c"/>
+    </linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="58" fill="url(#bg)"/>
+  <circle cx="128" cy="128" r="104" fill="none" stroke="#eadfd4" stroke-width="2"/>
+  <!-- 螺旋：从中心慢慢向外，象征一天天累积 -->
+  <path d="M128 128
+           m0 -8
+           a8 8 0 0 1 8 8
+           a16 16 0 0 1 -16 16
+           a26 26 0 0 1 -26 -26
+           a38 38 0 0 1 38 -38
+           a52 52 0 0 1 52 52
+           a66 66 0 0 1 -66 66"
+        fill="none" stroke="url(#spiral)" stroke-width="11"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 一天中的一小步：一个小圆点 -->
+  <circle cx="128" cy="46" r="9" fill="#8fa98c"/>
+</svg>

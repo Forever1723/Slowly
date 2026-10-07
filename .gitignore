@@ -1,0 +1,28 @@
+# 依赖（本项目零依赖，正常情况下不会有）
+node_modules/
+pnpm-lock.yaml
+
+# 运行时数据：每个人自己的记录，绝对不进仓库
+data/
+*.tmp-*
+*.broken-*
+
+# 编辑器与系统文件
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# 安卓编译产物
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+*.apk
+*.aab
+
+# 日志与临时文件
+*.log
+*.bak

@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f2ea">
+<meta name="description" content="Slowly · 写下今天的目标，记下完成的事，也记得对自己好一点。电脑与手机同一份数据。">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Slowly">
+<title>Slowly · 慢慢来，比较快</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/slowly-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/assets/slowly-256.png">
+<style>
+/* =============================================================
+   Slowly · 视觉基调：亚麻纸 + 鼠尾草绿 + 陶土橙
+   慢、暖、不催促
+   ============================================================= */
+:root{
+  --ink:#3b3530;
+  --ink-soft:#6f655c;
+  --ink-faint:#a2968a;
+  --line:#eadfd3;
+  --paper:#fffdfa;
+  --clay:#c96a49;
+  --clay-soft:#e8a17c;
+  --sage:#8fa98c;
+  --sage-deep:#6d8a6a;
+  --amber:#e0b070;
+  --shadow:0 10px 30px rgba(140,116,96,.10);
+  --radius:20px;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html{ background:#f7f2ea; }
+html,body{ margin:0; min-height:100%; }
+body{
+  font-family:"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",-apple-system,"Segoe UI",system-ui,sans-serif;
+  color:var(--ink); font-size:15px; line-height:1.65; letter-spacing:.01em;
+  background:
+    radial-gradient(1000px 500px at 6% -10%, #fdeee0 0%, rgba(253,238,224,0) 62%),
+    radial-gradient(900px 460px at 96% 2%, #e9f0e6 0%, rgba(233,240,230,0) 58%),
+    radial-gradient(900px 620px at 50% 116%, #f6ece1 0%, rgba(246,236,225,0) 60%),
+    #f7f2ea;
+  background-attachment:fixed;
+}
+button,input,textarea{ font:inherit; color:inherit; }
+button{ cursor:pointer; border:0; background:none; }
+ul{ list-style:none; margin:0; padding:0; }
+h1,h2,h3{ margin:0; font-weight:700; line-height:1.35; }
+::selection{ background:#f6d9c8; }
+
+.wrap{ max-width:720px; margin:0 auto; padding:16px 14px 116px; }
+
+/* ---------------- 顶部 ---------------- */
+.top{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin:4px 2px 16px; }
+.brand{ display:flex; align-items:center; gap:11px; min-width:0; }
+.brand .mark{ width:42px; height:42px; flex:0 0 auto; }
+.brand h1{ font-size:20px; letter-spacing:.04em; }
+.brand .tag{ font-size:12px; color:var(--ink-faint); letter-spacing:.06em; }
+.sync{
+  display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--ink-faint);
+  background:rgba(255,255,255,.7); border:1px solid var(--line); border-radius:999px;
+  padding:5px 10px; white-space:nowrap;
+}
+.dot{ width:7px; height:7px; border-radius:50%; background:var(--sage); box-shadow:0 0 0 3px rgba(143,169,140,.18); }
+.sync.off .dot{ background:#c9a08a; box-shadow:0 0 0 3px rgba(201,160,138,.18); }
+.sync.talking .dot{ animation:pulse 1.4s infinite; }
+@keyframes pulse{ 50%{ transform:scale(1.5); opacity:.55; } }
+
+.hello{ margin:0 2px 14px; }
+.hello .date{ font-size:12.5px; color:var(--ink-faint); letter-spacing:.04em; }
+.hello .greet{ font-size:21px; margin-top:2px; }
+.hello .sub{ font-size:13px; color:var(--ink-soft); margin-top:3px; }
+
+/* ---------------- 卡片 ---------------- */
+.card{
+  background:rgba(255,255,255,.86); border:1px solid rgba(255,255,255,.9);
+  border-radius:var(--radius); padding:16px 16px 15px; margin-bottom:13px;
+  box-shadow:var(--shadow); backdrop-filter:blur(6px);
+}
+.card-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:11px; }
+.card-head h2{ font-size:15.5px; }
+.card-head .hint{ font-size:11.5px; color:var(--ink-faint); }
+
+/* ---------------- 进度 ---------------- */
+.progress{ display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; }
+.ring{ position:relative; width:104px; height:104px; }
+.ring svg{ transform:rotate(-90deg); display:block; }
+.ring circle{ fill:none; stroke-width:9; stroke-linecap:round; }
+.ring .track{ stroke:#f1e8df; }
+.ring .val{ stroke:url(#grad); transition:stroke-dashoffset .8s cubic-bezier(.22,1,.36,1); }
+.ring .label{ position:absolute; inset:0; display:grid; place-content:center; text-align:center; }
+.ring .label b{ font-size:20px; line-height:1.1; }
+.ring .label i{ font-style:normal; font-size:10.5px; color:var(--ink-faint); letter-spacing:.06em; }
+.progress .num{ font-size:14.5px; font-weight:600; margin-bottom:5px; }
+.progress .num em{ font-style:normal; color:var(--clay); font-size:17px; }
+.progress .line{ font-size:12.8px; color:var(--ink-soft); }
+.echo{
+  margin-top:9px; font-size:12.8px; color:#5f7a60; background:#eef4ec; border-radius:12px;
+  padding:8px 11px; border-left:3px solid var(--sage);
+}
+.echo.warm{ color:#8a5c45; background:#fdf2ea; border-left-color:var(--clay-soft); }
+
+/* ---------------- 目标 ---------------- */
+.carry{ font-size:12.8px; color:#8a5c45; background:#fdf3ec; border-radius:14px; padding:10px 12px; margin-bottom:12px; }
+.carry button{ margin-top:8px; }
+.add{ display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:12px; }
+.add input{
+  width:100%; padding:12px 14px; border-radius:15px; border:1.5px solid var(--line);
+  background:var(--paper); outline:none; transition:border-color .18s, box-shadow .18s;
+}
+.add input:focus{ border-color:var(--clay-soft); box-shadow:0 0 0 4px rgba(232,161,124,.15); }
+.cats{ display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+.cat{ padding:5px 12px; border-radius:999px; font-size:12.5px; color:var(--ink-faint); background:#f6efe8; border:1.5px solid transparent; transition:.16s; }
+.cat[aria-pressed="true"]{ color:#fff; }
+.cat[data-cat="must"][aria-pressed="true"]{ background:var(--clay); }
+.cat[data-cat="should"][aria-pressed="true"]{ background:#7d9dc4; }
+.cat[data-cat="bonus"][aria-pressed="true"]{ background:var(--sage); }
+.btn{
+  padding:12px 18px; border-radius:15px; font-weight:600; font-size:14px; color:#fff;
+  background:linear-gradient(160deg,var(--clay-soft),var(--clay));
+  box-shadow:0 8px 20px rgba(201,106,73,.26); transition:transform .14s, box-shadow .2s;
+}
+.btn:hover{ transform:translateY(-1px); box-shadow:0 11px 24px rgba(201,106,73,.3); }
+.btn:active{ transform:translateY(0) scale(.99); }
+.btn.ghost{ background:#fff; color:var(--ink-soft); border:1.5px solid var(--line); box-shadow:none; padding:9px 14px; font-size:13px; }
+.btn.ghost:hover{ border-color:#ddcdbf; color:var(--ink); }
+.btn.sage{ background:linear-gradient(160deg,#a3bd9f,var(--sage-deep)); box-shadow:0 8px 20px rgba(109,138,106,.24); }
+
+.goal{ display:grid; grid-template-columns:auto 1fr auto; gap:11px; align-items:flex-start; padding:11px 9px; border-radius:15px; transition:background .18s; animation:rise .3s cubic-bezier(.22,1.2,.36,1); }
+.goal:hover{ background:#fdf9f4; }
+.goal + .goal{ border-top:1px dashed #f1e9e0; }
+@keyframes rise{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:none; } }
+.tick{ width:24px; height:24px; margin-top:1px; border-radius:9px; border:2px solid #dfd2c5; background:#fff; color:#fff; font-size:13px; display:grid; place-content:center; transition:.16s; }
+.tick:hover{ border-color:var(--clay-soft); }
+.tick:active{ transform:scale(.9); }
+.goal.done .tick{ background:linear-gradient(160deg,#a8c8a3,var(--sage-deep)); border-color:transparent; }
+.goal b{ font-weight:600; font-size:14.5px; display:block; word-break:break-word; }
+.goal.done b{ color:#a2958a; text-decoration:line-through; text-decoration-color:#d5cabe; }
+.goal small{ font-size:11.5px; color:var(--ink-faint); }
+.chip{ font-size:10.5px; padding:2px 8px; border-radius:999px; margin-right:5px; }
+.chip.must{ background:#fbe9e1; color:#b85f3f; }
+.chip.should{ background:#e9f0f8; color:#5b82ad; }
+.chip.bonus{ background:#eaf3e8; color:#5d7f57; }
+.chip.carry{ background:#f4eee8; color:#96887c; }
+.chip.from{ background:#f0eef7; color:#7b74a6; }
+.del{ opacity:0; color:#cbbcb0; font-size:15px; padding:2px 5px; border-radius:8px; transition:.16s; }
+.goal:hover .del, .goal:focus-within .del{ opacity:1; }
+.del:hover{ color:var(--clay); background:#fbe9e1; }
+.empty{ text-align:center; color:var(--ink-faint); font-size:13px; padding:14px 6px; }
+.empty b{ display:block; color:var(--ink-soft); font-size:14px; margin-bottom:3px; }
+
+/* ---------------- 心情 ---------------- */
+.moods{ display:flex; gap:7px; margin-bottom:11px; }
+.mood{ flex:1 1 0; min-width:0; text-align:center; padding:9px 4px 7px; border-radius:15px; background:#faf6f1; border:1.5px solid transparent; transition:.16s; }
+.mood em{ font-style:normal; font-size:20px; display:block; line-height:1.3; }
+.mood span{ font-size:11px; color:var(--ink-faint); }
+.mood:hover{ transform:translateY(-2px); }
+.mood[aria-pressed="true"]{ background:#fdf1e8; border-color:var(--clay-soft); box-shadow:0 6px 16px rgba(201,106,73,.14); }
+.mood[aria-pressed="true"] span{ color:var(--clay); }
+textarea{ width:100%; min-height:76px; resize:vertical; padding:12px 14px; border-radius:15px; border:1.5px solid var(--line); background:var(--paper); outline:none; line-height:1.7; }
+textarea:focus{ border-color:var(--clay-soft); box-shadow:0 0 0 4px rgba(232,161,124,.15); }
+.saved{ display:block; text-align:right; font-size:11.5px; color:#a9bda6; height:16px; }
+.words{ margin-top:6px; font-size:13px; color:#6d6055; background:#fdf8f2; border-left:3px solid var(--clay-soft); border-radius:0 13px 13px 0; padding:10px 13px; }
+
+/* ---------------- 成果 ---------------- */
+.victory{ display:grid; grid-template-columns:auto 1fr; gap:11px; padding:11px; border-radius:15px; background:#fbfdfa; border:1px solid #f0f5ee; margin-bottom:8px; }
+.victory .medal{ font-size:18px; line-height:1.4; }
+.victory b{ font-size:14px; font-weight:600; display:block; }
+.victory small{ font-size:11.5px; color:var(--ink-faint); }
+
+/* ---------------- 记录 ---------------- */
+.stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:9px; margin-bottom:4px; }
+.stat{ background:linear-gradient(165deg,#fffaf4,#fff); border:1px solid #f2e9e0; border-radius:16px; padding:12px 8px; text-align:center; }
+.stat b{ display:block; font-size:21px; color:var(--clay); line-height:1.25; }
+.stat span{ font-size:11px; color:var(--ink-faint); }
+.heat{ display:grid; grid-template-rows:repeat(7,15px); grid-auto-flow:column; grid-auto-columns:15px; gap:4px; justify-content:start; overflow-x:auto; padding:5px 2px 7px; }
+.heat i{ display:block; width:15px; height:15px; border-radius:5px; background:#f1eae2; }
+.heat i.l1{ background:#fbdcc9; } .heat i.l2{ background:#f0b393; }
+.heat i.l3{ background:#dd8a63; } .heat i.l4{ background:#bd6242; }
+.heat i.future{ background:transparent; }
+.legend{ display:flex; align-items:center; gap:5px; justify-content:flex-end; font-size:11px; color:var(--ink-faint); }
+.legend i{ width:12px; height:12px; border-radius:4px; display:block; }
+.bars{ display:grid; grid-template-columns:repeat(7,1fr); gap:8px; align-items:end; height:120px; margin-top:4px; }
+.bar{ display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:6px; height:100%; }
+.bar u{ display:block; width:100%; max-width:26px; height:0; border-radius:8px 8px 4px 4px; background:linear-gradient(180deg,#f0b393,#dd8a63); transition:height .6s cubic-bezier(.22,1,.36,1); }
+.bar.today u{ background:linear-gradient(180deg,#a8c8a3,var(--sage-deep)); }
+.bar em{ font-style:normal; font-size:11px; color:var(--ink-faint); }
+.bar b{ font-size:11px; color:#bcafa4; font-weight:600; }
+.report{ font-size:13.2px; color:#6d6055; }
+.report p{ margin:0 0 7px; }
+.tagline{ display:inline-block; font-size:11.5px; color:var(--ink-soft); background:#f6efe8; border-radius:999px; padding:3px 10px; margin:0 6px 6px 0; }
+
+/* ---------------- 设置 ---------------- */
+.rows{ display:flex; flex-direction:column; gap:10px; }
+.row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px dashed #f1e9e0; }
+.row:last-child{ border-bottom:0; }
+.row .k{ font-size:13px; color:var(--ink-soft); }
+.row .v{ font-size:13px; font-weight:600; text-align:right; word-break:break-all; }
+.row .v.mono{ font-family:ui-monospace,Consolas,monospace; font-size:12px; font-weight:500; }
+.btns{ display:flex; gap:8px; flex-wrap:wrap; }
+.qr-box{ text-align:center; padding:8px 0 2px; }
+.qr-box svg{ width:190px; height:190px; border-radius:14px; box-shadow:var(--shadow); background:#fff; padding:6px; }
+.qr-box .url{ font-family:ui-monospace,Consolas,monospace; font-size:12.5px; color:var(--ink-soft); margin-top:10px; word-break:break-all; }
+.qr-box .tip{ font-size:12px; color:var(--ink-faint); margin-top:6px; }
+.devices{ font-size:12.5px; color:var(--ink-soft); }
+.devices .chips{ margin-top:6px; }
+.stream{ font-size:12.5px; color:var(--ink-soft); }
+.stream li{ padding:7px 0; border-bottom:1px dashed #f1e9e0; display:flex; justify-content:space-between; gap:10px; }
+.stream li:last-child{ border-bottom:0; }
+.stream .who{ color:var(--ink-faint); font-size:11.5px; white-space:nowrap; }
+
+/* ---------------- 底部导航 ---------------- */
+.tabs{
+  position:fixed; left:0; right:0; bottom:0; z-index:40;
+  display:flex; gap:4px; justify-content:center;
+  padding:8px 10px calc(8px + env(safe-area-inset-bottom));
+  background:linear-gradient(180deg, rgba(247,242,234,0), rgba(247,242,234,.94) 36%, #f7f2ea);
+  backdrop-filter:blur(10px);
+}
+.tab{ flex:1 1 0; max-width:150px; text-align:center; padding:8px 6px 7px; border-radius:15px; font-size:12.5px; color:var(--ink-faint); border:1px solid transparent; transition:.18s; }
+.tab em{ font-style:normal; display:block; font-size:17px; line-height:1.25; }
+.tab[aria-current="page"]{ background:#fff; color:var(--clay); border-color:#f2e4d8; box-shadow:0 8px 20px rgba(140,116,96,.13); }
+
+/* ---------------- 浮层 ---------------- */
+.toasts{ position:fixed; left:50%; transform:translateX(-50%); bottom:92px; z-index:70; display:flex; flex-direction:column; gap:8px; align-items:center; width:max-content; max-width:92vw; }
+.toast{ background:rgba(59,53,48,.94); color:#fff8f2; font-size:13.2px; padding:10px 16px; border-radius:14px; box-shadow:0 12px 28px rgba(59,53,48,.26); animation:rise .3s cubic-bezier(.22,1.2,.36,1); }
+.toast.good{ background:rgba(109,138,106,.95); }
+.toast.warn{ background:rgba(176,106,74,.95); }
+.confetti{ position:fixed; top:-14px; width:9px; height:14px; border-radius:2px; z-index:80; pointer-events:none; animation:fall linear forwards; }
+@keyframes fall{ to{ transform:translateY(105vh) rotate(720deg); opacity:.12; } }
+.modal{ position:fixed; inset:0; z-index:90; background:rgba(59,53,48,.42); display:grid; place-items:center; padding:18px; backdrop-filter:blur(3px); }
+.modal[hidden]{ display:none; }
+.sheet{ background:var(--paper); border-radius:22px; padding:18px; width:100%; max-width:380px; box-shadow:0 24px 60px rgba(59,53,48,.3); animation:rise .28s cubic-bezier(.22,1.2,.36,1); }
+.sheet h3{ font-size:16px; margin-bottom:6px; }
+.sheet p{ font-size:13px; color:var(--ink-soft); margin:0 0 12px; }
+.sheet input{ width:100%; padding:11px 13px; border-radius:14px; border:1.5px solid var(--line); background:#fff; outline:none; margin-bottom:12px; }
+.sheet .actions{ display:flex; gap:8px; justify-content:flex-end; }
+.foot{ text-align:center; font-size:11.5px; color:#bcafa4; margin-top:16px; line-height:1.9; }
+.skel{ height:12px; border-radius:6px; background:linear-gradient(90deg,#f2ece5,#faf6f1,#f2ece5); background-size:200% 100%; animation:sh 1.4s infinite; }
+@keyframes sh{ to{ background-position:-200% 0; } }
+
+@media (max-width:430px){
+  .hello .greet{ font-size:19px; }
+  .progress{ grid-template-columns:1fr; text-align:center; }
+  .ring{ margin:0 auto; }
+  .add{ grid-template-columns:1fr; }
+  .brand h1{ font-size:18px; }
+  .mood em{ font-size:18px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <svg class="mark" viewBox="0 0 256 256" aria-hidden="true">
+        <defs>
+          <linearGradient id="mg" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stop-color="#e8a17c"/><stop offset="55%" stop-color="#c96a49"/><stop offset="100%" stop-color="#8fa98c"/>
+          </linearGradient>
+        </defs>
+        <rect width="256" height="256" rx="58" fill="#fdf6ec"/>
+        <path d="M128 128 m0 -8 a8 8 0 0 1 8 8 a16 16 0 0 1 -16 16 a26 26 0 0 1 -26 -26 a38 38 0 0 1 38 -38 a52 52 0 0 1 52 52 a66 66 0 0 1 -66 66"
+              fill="none" stroke="url(#mg)" stroke-width="13" stroke-linecap="round"/>
+        <circle cx="128" cy="46" r="10" fill="#8fa98c"/>
+      </svg>
+      <div>
+        <h1>Slowly</h1>
+        <div class="tag">慢慢来，比较快</div>
+      </div>
+    </div>
+    <div class="sync" id="sync" title="与这台电脑上的数据同步状态">
+      <span class="dot"></span><span id="syncText">连接中</span>
+    </div>
+  </header>
+
+  <section class="hello">
+    <div class="date" id="dateLine"></div>
+    <div class="greet" id="greetLine">你好呀</div>
+    <div class="sub" id="subLine"></div>
+  </section>
+
+  <main>
+    <!-- ============ 今天 ============ -->
+    <section id="view-today">
+      <div class="card progress">
+        <div class="ring">
+          <svg width="104" height="104" viewBox="0 0 104 104" aria-hidden="true">
+            <defs>
+              <linearGradient id="grad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0%" stop-color="#e8a17c"/><stop offset="60%" stop-color="#c96a49"/><stop offset="100%" stop-color="#8fa98c"/>
+              </linearGradient>
+            </defs>
+            <circle class="track" cx="52" cy="52" r="45"></circle>
+            <circle class="val" id="ringVal" cx="52" cy="52" r="45"></circle>
+          </svg>
+          <div class="label"><b id="ringPct">0%</b><i>今日进度</i></div>
+        </div>
+        <div>
+          <div class="num" id="progressNum">正在读取今天的记录…</div>
+          <div class="line" id="progressLine"></div>
+          <div class="echo" id="progressEcho" hidden></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>今天想完成什么</h2>
+          <span class="hint" id="goalCount"></span>
+        </div>
+        <div id="carryBox" hidden></div>
+        <div id="goalList"><div class="empty"><b>正在读取…</b><span class="skel" style="display:block;width:60%;margin:8px auto 0"></span></div></div>
+        <div class="add">
+          <input id="goalInput" type="text" maxlength="120" placeholder="写一件小事就够，比如「散步 10 分钟」" autocomplete="off" enterkeyhint="done">
+          <button class="btn" id="addBtn" type="button">加进今天</button>
+        </div>
+        <div class="cats" id="cats">
+          <button class="cat" type="button" data-cat="must" aria-pressed="true">必须做</button>
+          <button class="cat" type="button" data-cat="should" aria-pressed="false">想做</button>
+          <button class="cat" type="button" data-cat="bonus" aria-pressed="false">加分项</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2>今天的心情</h2>
+          <span class="hint">点一下就好</span>
+        </div>
+        <div class="moods" id="moods"></div>
+        <div class="words" id="moodWords">今天过得怎么样？先深呼吸一下，再点一个最接近的表情。</div>
+        <div style="margin-top:11px">
+          <textarea id="noteInput" maxlength="2000" placeholder="想留一句话给自己：做成了什么、被什么绊住了、想谢谢谁…"></textarea>
+          <span class="saved" id="noteSaved"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 成果 ============ -->
+    <section id="view-wins" hidden>
+      <div class="card">
+        <div class="card-head"><h2>今天做到的事</h2><span class="hint" id="winsCount"></span></div>
+        <div id="winsList"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>给自己一句话</h2></div>
+        <div class="words" id="winsWords"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>往前积累的</h2><span class="hint" id="historyCount"></span></div>
+        <div id="historyList"></div>
+      </div>
+    </section>
+
+    <!-- ============ 记录 ============ -->
+    <section id="view-stats" hidden>
+      <div class="card">
+        <div class="card-head"><h2>你的数字</h2><span class="hint">数据存在你自己的电脑上</span></div>
+        <div class="stats">
+          <div class="stat"><b id="statTotal">0</b><span>累计完成</span></div>
+          <div class="stat"><b id="statDays">0</b><span>有记录的天数</span></div>
+          <div class="stat"><b id="statStreak">0</b><span>连续天数</span></div>
+        </div>
+        <div class="card-head" style="margin-top:14px"><h2 style="font-size:14px">近 12 周</h2><span class="hint">颜色越深，完成越多</span></div>
+        <div class="heat" id="heat"></div>
+        <div class="legend">
+          <span>少</span>
+          <i style="background:#f1eae2"></i><i style="background:#fbdcc9"></i><i style="background:#f0b393"></i><i style="background:#dd8a63"></i><i style="background:#bd6242"></i>
+          <span>多</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>近 7 天</h2><span class="hint">绿色是今天</span></div>
+        <div class="bars" id="bars"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>慢慢看</h2><span class="hint">我看到的你</span></div>
+        <div class="report" id="report"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>最近发生了什么</h2><span class="hint">两个端都会出现在这里</span></div>
+        <ul class="stream" id="activityList"><li>还没有记录</li></ul>
+      </div>
+    </section>
+
+    <!-- ============ 连接 ============ -->
+    <section id="view-share" hidden>
+      <div class="card" id="installCard" hidden>
+        <div class="card-head"><h2>装到主屏幕</h2><span class="hint">像 App 一样用</span></div>
+        <div class="words" id="installHint">点浏览器的菜单，选「安装应用」或「添加到主屏幕」</div>
+        <div class="btns" style="margin-top:12px">
+          <button class="btn sage" id="installBtn" type="button" hidden>现在就装</button>
+        </div>
+        <div class="tip" style="margin-top:8px;font-size:12px;color:#a2968a">
+          装好之后没有地址栏，断网也能打开，图标就在主屏上。
+        </div>
+      </div>
+
+      <div class="card" id="syncCard" hidden>
+        <div class="card-head"><h2>与电脑同步</h2><span class="hint" id="syncHint">可选</span></div>
+        <div class="rows">
+          <div class="row"><span class="k">电脑地址</span><span class="v mono" id="serverUrl">—</span></div>
+          <div class="row"><span class="k">上次同步</span><span class="v" id="lastSyncAt">还没有</span></div>
+        </div>
+        <div class="btns" style="margin-top:12px">
+          <button class="btn sage" id="syncNowBtn" type="button">立即同步</button>
+          <button class="btn ghost" id="setUrlBtn" type="button">填写电脑地址</button>
+        </div>
+        <div class="words" style="margin-top:12px" id="syncExplain">
+          手机上记的东西先存在这台设备里；填上电脑地址后，回到同一个 WiFi 点一次「立即同步」，
+          两边就会合并成同一份数据 —— 谁也不覆盖谁。
+        </div>
+      </div>
+
+      <div class="card" id="offlineCard" hidden>
+        <div class="card-head"><h2>手机独立版</h2><span class="hint">电脑关机也能用</span></div>
+        <div class="qr-box">
+          <div id="offlineQr"><div class="skel" style="width:150px;height:150px;border-radius:12px;margin:0 auto"></div></div>
+          <div class="tip" style="margin-top:8px">手机扫这个码，把 Slowly 存到手机上</div>
+        </div>
+        <div class="words" style="margin-top:10px">
+          存下来以后，即使电脑没开机、不在同一个 WiFi，也能照常记录；
+          回到同一 WiFi 后点一次「立即同步」，两边就会合并 —— 谁也不覆盖谁。
+          <br><br>
+          想让它有真正的 App 图标和独立外壳，就用同一份代码编译成安卓 APK，
+          步骤见 <b>android/BUILD.md</b>。
+        </div>
+        <div class="btns" style="margin-top:12px">
+          <button class="btn ghost" id="copyOfflineLink" type="button">复制下载地址</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>手机扫码打开</h2><span class="hint">与电脑连同一个 WiFi</span></div>
+        <div class="qr-box">
+          <div id="qrHolder"><div class="skel" style="width:190px;height:190px;border-radius:14px;margin:0 auto"></div></div>
+          <div class="url" id="lanUrl">正在获取…</div>
+          <div class="tip">扫不到？把上面这行地址手动输入手机浏览器也行。</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>当前连接</h2></div>
+        <div class="rows">
+          <div class="row"><span class="k">这台设备</span><span class="v" id="deviceName">—</span></div>
+          <div class="row"><span class="k">同时在线</span><span class="v devices" id="clientsInfo">—</span></div>
+          <div class="row"><span class="k">数据文件</span><span class="v mono" id="dataPath">—</span></div>
+          <div class="row"><span class="k">上次保存</span><span class="v" id="savedAt">—</span></div>
+          <div class="row"><span class="k">版本</span><span class="v" id="appVersion">—</span></div>
+        </div>
+        <div class="btns" style="margin-top:12px">
+          <button class="btn ghost" id="renameBtn" type="button">给这台设备改个名</button>
+          <button class="btn ghost" id="reconnectBtn" type="button">重新连接</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>数据</h2><span class="hint">建议偶尔导出一次</span></div>
+        <div class="btns">
+          <button class="btn ghost" id="exportBtn" type="button">导出备份</button>
+          <button class="btn ghost" id="importBtn" type="button">导入备份</button>
+          <button class="btn ghost" id="demoBtn" type="button">看看有数据的样子</button>
+          <button class="btn ghost" id="clearBtn" type="button">清空全部</button>
+        </div>
+        <div class="words" style="margin-top:12px">
+          备份是一份 JSON 文件，包含全部目标、心情和随笔。换电脑时把它放到新电脑的
+          <b>%APPDATA%\Slowly\</b> 目录并改名成 <b>slowly-data.json</b>，或者用「导入备份」。
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>关于 Slowly</h2></div>
+        <div class="report">
+          <p>Slowly 是一个只属于你的小工具：写下今天想做的事，打勾，记下心情，然后看着日子一点点积累起来。</p>
+          <p>它不联网、不注册、不上传任何东西 —— 数据就存在你这台电脑的一个文件里，手机只是连过来看同一份数据。</p>
+          <p style="color:#a2968a">慢慢来，比较快。</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div class="foot">Slowly · 数据只存在你的设备上<br>关掉这个页面也不会丢，明天打开还在</div>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab" type="button" data-view="today" aria-current="page"><em>🌱</em>今天</button>
+  <button class="tab" type="button" data-view="wins"><em>🏅</em>成果</button>
+  <button class="tab" type="button" data-view="stats"><em>📈</em>记录</button>
+  <button class="tab" type="button" data-view="share"><em>🔗</em>连接</button>
+</nav>
+
+<div class="toasts" id="toasts"></div>
+<input type="file" id="fileInput" accept="application/json,.json" hidden>
+
+<div class="modal" id="nameModal" hidden>
+  <div class="sheet">
+    <h3>这台设备叫什么？</h3>
+    <p>给设备起个名字，另一端的操作记录里就能看出是谁做的。</p>
+    <input id="nameInput" type="text" maxlength="20" placeholder="例如：我的手机 / 书房电脑">
+    <div class="actions">
+      <button class="btn ghost" id="nameSkip" type="button">先跳过</button>
+      <button class="btn" id="nameSave" type="button">就叫这个</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
