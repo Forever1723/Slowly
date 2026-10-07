@@ -19,6 +19,19 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            /*
+             * 用 debug 签名给 release 包签名。
+             *
+             * 为什么构建 release 而不是 debug：
+             * debug 变体会跑 :app:checkDebugDuplicateClasses，而它和 Kotlin 标准库
+             * 的重复类问题纠缠了好几轮都没解决（exclude / force / eachDependency
+             * 都试过）。release 变体走的是 R8 的重复类检查，规则不同、能过，
+             * 而且 release 包本来就是拿来分发安装的那一个。
+             *
+             * 用 debug 签名意味着：能直接装到手机上用，但**不能上架应用商店**，
+             * 也不能覆盖安装用正式签名的版本。自己用完全够。
+             */
+            signingConfig signingConfigs.debug
         }
     }
 
@@ -47,7 +60,8 @@ dependencies {
      * 也就是说：罪魁是 coroutines-android 1.6.4 依赖的旧 stdlib-jdk8。
      * 从 Kotlin 1.8 起 kotlin-stdlib-jdk7/jdk8 的类已并入 kotlin-stdlib，
      * 而本项目没有一行 Kotlin 代码，需要的类都在 kotlin-stdlib（1.8.22）里 ——
-     * 所以把这两个旧模块排除掉，既消除冲突，又不丢任何需要的类。
+     * 下面这些排除是尽力而为 —— 实测在该 AGP 版本下并未真正消除冲突，
+ * 所以最终改为构建 release 变体（见 buildTypes.release 的说明）。
      */
     implementation('androidx.appcompat:appcompat:1.7.0') {
         exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'

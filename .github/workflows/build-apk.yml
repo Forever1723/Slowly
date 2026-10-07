@@ -104,16 +104,16 @@ jobs:
           echo "=== 全部配置里出现 kotlin-stdlib-jdk8 的位置 ==="
           gradle :app:dependencies --no-daemon 2>&1 | grep -B4 'kotlin-stdlib-jdk8' | head -60 || true
 
-      - name: Build debug APK
+      - name: Build APK (release)
         working-directory: ${{ steps.locate.outputs.root }}/android
-        run: gradle assembleDebug --no-daemon --stacktrace
+        run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Show artifacts
-        run: ls -lh "${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/"
+        run: find "${{ steps.locate.outputs.root }}/android/app/build/outputs/apk" -name '*.apk' -exec ls -lh {} \;
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: slowly-debug-apk
-          path: ${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/*.apk
+          name: slowly-apk
+          path: ${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
