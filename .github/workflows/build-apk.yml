@@ -1,0 +1,82 @@
+name: Build Slowly APK
+
+# 手机端的安卓安装包。两种触发方式：
+#   1. 在仓库的 Actions 页面点「Run workflow」手动触发
+#   2. 推送到 main 且改动涉及 android/、public/、tools/ 时自动触发
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'android/**'
+      - 'Slowly/android/**'
+      - 'public/**'
+      - 'Slowly/public/**'
+      - 'tools/**'
+      - 'Slowly/tools/**'
+      - '.github/workflows/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 工程目录可能在根，也可能在 Slowly/ 下，自动判断
+      - name: 定位工程目录
+        id: locate
+        run: |
+          set -e
+          if [ -f android/app/build.gradle ]; then
+            echo "root=." >> "$GITHUB_OUTPUT"
+          elif [ -f Slowly/android/app/build.gradle ]; then
+            echo "root=Slowly" >> "$GITHUB_OUTPUT"
+          else
+            echo "没有找到 android/app/build.gradle" >&2
+            exit 1
+          fi
+
+      - name: 安装 JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+
+      # 固定 Gradle 版本：AGP 8.5.2 需要 Gradle 8.7+。
+      # 不能用 runner 上碰巧预装的那一版，否则版本一变整个构建就挂。
+      - name: 安装并固定 Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      # 显式装齐编译所需的 SDK 平台与构建工具，不依赖镜像预装了什么
+      - name: 安装 SDK 平台与构建工具
+        run: |
+          set -e
+          yes | sdkmanager --licenses > /dev/null 2>&1 || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: 安装 Node（用来重新生成离线界面）
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 保证打进 APK 的 index.html 与 public/ 里的最新代码一致
+      - name: 重新生成离线界面
+        run: node "${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
+
+      - name: 编译 Debug APK
+        working-directory: ${{ steps.locate.outputs.root }}/android
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: 显示产物
+        run: ls -lh "${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/"
+
+      - name: 上传 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: slowly-debug-apk
+          path: ${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error

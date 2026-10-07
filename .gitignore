@@ -27,7 +27,3 @@ android/.idea/
 *.log
 *.bak
 
-# GitHub 要求令牌带 workflow 权限才能推送工作流文件。
-# 补上 workflow 权限后，删掉下面两行再发布即可让云端编译 APK。
-.github/workflows/build-apk.yml
-android/.github/workflows/build-apk.yml
