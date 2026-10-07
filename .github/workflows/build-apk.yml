@@ -88,18 +88,22 @@ jobs:
       - name: 重新生成离线界面
         run: node "${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
 
-      # 依赖诊断：万一还有冲突，日志里能直接看到是哪两个版本撞了、由谁带进来。
-      # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped，日志里什么都没有。
+      # 依赖诊断：把 kotlin 模块（含被排除的）全部打出来，一次就能确认结果。
+      # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped。
       - name: Kotlin dependency diagnosis
         working-directory: ${{ steps.locate.outputs.root }}/android
         run: |
-          echo "=== debugRuntimeClasspath 里的 kotlin 模块 ==="
+          echo "=== debugRuntimeClasspath 里的 kotlin-stdlib 条目 ==="
           gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
-            | grep -E 'kotlin-stdlib' || echo "(依赖树里没有 kotlin-stdlib)"
+            | grep -E 'kotlin-stdlib' || echo "(没有 kotlin-stdlib 条目)"
           echo ""
-          echo "=== jdk7 是哪个依赖带进来的 ==="
+          echo "=== 是否还有被排除标记 ==="
+          gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
+            | grep -E '\(n\)|-> ' | grep -i kotlin || echo "(没有 kotlin 相关的替换或排除)"
+          echo ""
+          echo "=== jdk7 的来源链 ==="
           gradle :app:dependencyInsight --configuration debugRuntimeClasspath \
-            --dependency kotlin-stdlib-jdk7 --no-daemon 2>&1 | head -40 || true
+            --dependency kotlin-stdlib-jdk7 --no-daemon 2>&1 | head -30 || true
 
       - name: Build debug APK
         working-directory: ${{ steps.locate.outputs.root }}/android
