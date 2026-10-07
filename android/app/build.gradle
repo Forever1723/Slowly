@@ -31,21 +31,22 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.webkit:webkit:1.11.0'
-}
 
-/*
- * 统一 Kotlin 标准库版本。
- *
- * 不这么做的话 CI 上会失败在 :app:checkDebugDuplicateClasses：
- *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
- *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
- *     kotlin-stdlib-jdk8-1.6.21.jar   （另一条依赖链带进来的）
- * 两个版本的 stdlib 撞在一起。这里把整个 Kotlin 家族钉在同一版本上。
- */
-configurations.all {
-    resolutionStrategy {
-        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
-        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
-    }
+    /*
+     * 显式声明 Kotlin 标准库版本。
+     *
+     * 不声明的话 CI 上会失败在 :app:checkDebugDuplicateClasses：
+     *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
+     *     kotlin-stdlib-1.8.22.jar         （androidx.webkit 带进来的）
+     *     kotlin-stdlib-jdk8-1.6.21.jar    （另一条依赖链带进来的）
+     * 两条链各带一个版本，撞在一起。
+     *
+     * 注意：只用 resolutionStrategy.force 实测**不够** —— 那只是"偏好"，
+     * 依赖图里仍会保留旧版本。直接声明成依赖，它才会参与版本仲裁、把整条链拉齐。
+     * 1.8 起 kotlin-stdlib-jdk7/jdk8 已并入 kotlin-stdlib，但仍需显式拉齐，
+     * 否则旧版本会随依赖链进来。
+     */
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
 }
