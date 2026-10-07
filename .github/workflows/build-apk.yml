@@ -1,8 +1,9 @@
 name: Build Slowly APK
 
-# 手机端的安卓安装包。两种触发方式：
+# 手机端的安卓安装包。三种触发方式：
 #   1. 在仓库的 Actions 页面点「Run workflow」手动触发
 #   2. 推送到 main 且改动涉及 android/、public/、tools/ 时自动触发
+#   3. 改到这个工作流文件本身时
 on:
   workflow_dispatch:
   push:
@@ -41,8 +42,35 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+      # 缓存 Android SDK：首次要下几百 MB，缓存后后续构建快得多
+      - name: 缓存 Android SDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk
+          key: android-sdk-${{ runner.os }}-platform34-bt34
+
+      # 不用 android-actions/setup-android：实测它会卡在交互式的许可确认上
+      # （日志里全是 "Accept? (y/N):" 却没有输入），导致这一步直接失败。
+      # 这里改成自己装命令行工具，并用 yes 非交互式接受全部许可。
+      - name: 安装 Android SDK（非交互）
+        run: |
+          set -e
+          SDK_ROOT=/usr/local/lib/android/sdk
+          if [ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            mkdir -p "$SDK_ROOT/cmdline-tools"
+            cd /tmp
+            curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q tools.zip -d "$SDK_ROOT/cmdline-tools"
+            mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          fi
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       # 固定 Gradle 版本：AGP 8.5.2 需要 Gradle 8.7+。
       # 不能用 runner 上碰巧预装的那一版，否则版本一变整个构建就挂。
@@ -50,13 +78,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
-
-      # 显式装齐编译所需的 SDK 平台与构建工具，不依赖镜像预装了什么
-      - name: 安装 SDK 平台与构建工具
-        run: |
-          set -e
-          yes | sdkmanager --licenses > /dev/null 2>&1 || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: 安装 Node（用来重新生成离线界面）
         uses: actions/setup-node@v4
