@@ -1,5 +1,6 @@
 package com.slowly.app;
 
+import android.app.Activity;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -11,14 +12,15 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 /**
  * Slowly 的安卓外壳。
  * 界面是打包在 assets/index.html 里的离线版：不连电脑也能记，
  * 连上电脑点一次「立即同步」就把两边合并。
+ *
+ * 继承框架自带的 Activity 而不是 AppCompatActivity —— 本项目不依赖 AppCompat，
+ * 原因见 app/build.gradle 里的说明（Kotlin 标准库重复类问题）。
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private WebView web;
 

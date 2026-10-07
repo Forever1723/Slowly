@@ -19,18 +19,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            /*
-             * 用 debug 签名给 release 包签名。
-             *
-             * 为什么构建 release 而不是 debug：
-             * debug 变体会跑 :app:checkDebugDuplicateClasses，而它和 Kotlin 标准库
-             * 的重复类问题纠缠了好几轮都没解决（exclude / force / eachDependency
-             * 都试过）。release 变体走的是 R8 的重复类检查，规则不同、能过，
-             * 而且 release 包本来就是拿来分发安装的那一个。
-             *
-             * 用 debug 签名意味着：能直接装到手机上用，但**不能上架应用商店**，
-             * 也不能覆盖安装用正式签名的版本。自己用完全够。
-             */
+            /* 这个 App 不是给应用商店用的，自己装着用 —— 用 debug 签名即可，
+               省掉配密钥库的麻烦。注意：这样签出来的包不能上架，
+               也不能覆盖安装用正式签名的版本。 */
             signingConfig signingConfigs.debug
         }
     }
@@ -41,48 +32,34 @@ android {
     }
 }
 
-dependencies {
-    /*
-     * Kotlin 标准库重复类问题。
-     *
-     * CI 上失败在 :app:checkDebugDuplicateClasses：
-     *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
-     *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
-     *     kotlin-stdlib-jdk8-1.6.21.jar
-     *
-     * 用 dependencyInsight 查出的确凿因果链（不再靠猜）：
-     *   org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.6.21
-     *   +--- org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4
-     *        +--- androidx.lifecycle:lifecycle-common:2.6.2
-     *             +--- androidx.savedstate:savedstate:1.2.1
-     *                  +--- androidx.appcompat:appcompat:1.7.0
-     *
-     * 也就是说：罪魁是 coroutines-android 1.6.4 依赖的旧 stdlib-jdk8。
-     * 从 Kotlin 1.8 起 kotlin-stdlib-jdk7/jdk8 的类已并入 kotlin-stdlib，
-     * 而本项目没有一行 Kotlin 代码，需要的类都在 kotlin-stdlib（1.8.22）里 ——
-     * 下面这些排除是尽力而为 —— 实测在该 AGP 版本下并未真正消除冲突，
- * 所以最终改为构建 release 变体（见 buildTypes.release 的说明）。
-     */
-    implementation('androidx.appcompat:appcompat:1.7.0') {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-    implementation('androidx.webkit:webkit:1.11.0') {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-    /* 照 dependencyInsight 指出的元凶，直接从它身上排掉 */
-    implementation('org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4') {
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-        exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
-    }
-}
-
 /*
- * 双保险：整张图上都不接受这两个旧模块。
- * 上面的 exclude 是挂在具体依赖上的（更精确），这里是全局兜底。
+ * 这里刻意**不依赖任何 AndroidX 库**。
+ *
+ * 之前的依赖是 appcompat + webkit，CI 一直失败在重复类检查：
+ *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
+ *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
+ *     kotlin-stdlib-jdk8-1.6.21.jar   （androidx.lifecycle 带进来的）
+ *
+ * 用 dependencyInsight 查到的完整因果链：
+ *   kotlin-stdlib-jdk8:1.6.21
+ *   +--- kotlinx-coroutines-android:1.6.4
+ *        +--- androidx.lifecycle:lifecycle-common:2.6.2
+ *             +--- androidx.appcompat:appcompat:1.7.0
+ *
+ * 试过的办法（resolutionStrategy.force、eachDependency、在 dependencies 上
+ * exclude、configurations 全局 exclude）**都没能让它消失**，每一轮 CI 都是
+ * 同一个错。继续和依赖解析纠缠性价比太低，于是换了个更彻底、也更贴合本项目的
+ * 方向：
+ *
+ * 这个 App 本身就是个 WebView 外壳，一行 Kotlin 都没有，界面全在
+ * assets/index.html 里。检查代码后发现 —— appcompat 只用到
+ * AppCompatActivity 一个基类，webkit **完全没用到**（WebView 的 API 都来自
+ * Android 框架本身）。两者去掉之后，依赖图里不再有任何 Kotlin 标准库，
+ * "重复类"这个问题从根上不存在了。
+ *
+ * 代价：失去 AppCompat 的向后兼容垫片，MainActivity 改为继承框架的 Activity，
+ * 主题也从 Theme.AppCompat 换成 @android:style/Theme.DeviceDefault.Light.NoActionBar。
+ * 本项目 minSdk 是 24，那些垫片带来的收益本来就很小。
  */
-configurations.configureEach {
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk7'
-    exclude group: 'org.jetbrains.kotlin', module: 'kotlin-stdlib-jdk8'
+dependencies {
 }
