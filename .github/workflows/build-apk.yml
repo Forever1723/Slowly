@@ -88,21 +88,29 @@ jobs:
       - name: 重新生成离线界面
         run: node "${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
 
-      # 依赖诊断：把 kotlin 模块（含被排除的）全部打出来，一次就能确认结果。
+      # 依赖诊断：直接打印 classpath 上的每个文件。
+      # 之前的依赖树 grep 一直只能抓到命令回显，看不出真实来源 —— 这次让 Gradle
+      # 把**解析结果**列出来，谁在 classpath 上一目了然。
       # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped。
-      - name: Kotlin dependency diagnosis
+      - name: Dependency diagnosis
         working-directory: ${{ steps.locate.outputs.root }}/android
         run: |
-          echo "=== debugRuntimeClasspath 里的 kotlin-stdlib 条目 ==="
-          gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
-            | grep -E 'kotlin-stdlib' || echo "(没有 kotlin-stdlib 条目)"
+          cat >> app/build.gradle <<'EOF'
+
+// ↓↓↓ 临时诊断任务，由 CI 的 Dependency diagnosis 步骤调用 ↓↓↓
+tasks.register('printClasspath') {
+    doLast {
+        def cfg = configurations.findByName('releaseRuntimeClasspath')
+        if (cfg == null) { println 'NO releaseRuntimeClasspath'; return }
+        println '=== releaseRuntimeClasspath 上的文件（共 ' + cfg.files.size() + ' 个）==='
+        cfg.files.sort { it.name }.each { println '  ' + it.name + '   <-  ' + it.absolutePath }
+    }
+}
+EOF
+          gradle :app:printClasspath --no-daemon -q 2>&1 | head -60 || true
           echo ""
-          echo "=== jdk8 的完整来源链（关键：谁把它带进来的）==="
-          gradle :app:dependencyInsight --configuration debugRuntimeClasspath \
-            --dependency kotlin-stdlib-jdk8 --no-daemon 2>&1 | head -60 || true
-          echo ""
-          echo "=== 全部配置里出现 kotlin-stdlib-jdk8 的位置 ==="
-          gradle :app:dependencies --no-daemon 2>&1 | grep -B4 'kotlin-stdlib-jdk8' | head -60 || true
+          echo "=== 工程里有没有源码/目录带进 kotlin ==="
+          ls -la libs 2>/dev/null || echo "(没有 libs 目录)"
 
       - name: Build APK (release)
         working-directory: ${{ steps.locate.outputs.root }}/android
