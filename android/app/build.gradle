@@ -32,3 +32,20 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.webkit:webkit:1.11.0'
 }
+
+/*
+ * 统一 Kotlin 标准库版本。
+ *
+ * 不这么做的话 CI 上会失败在 :app:checkDebugDuplicateClasses：
+ *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
+ *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
+ *     kotlin-stdlib-jdk8-1.6.21.jar   （另一条依赖链带进来的）
+ * 两个版本的 stdlib 撞在一起。这里把整个 Kotlin 家族钉在同一版本上。
+ */
+configurations.all {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+    }
+}
