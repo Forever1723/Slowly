@@ -31,31 +31,37 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'androidx.webkit:webkit:1.11.0'
+
+    /*
+     * 统一 Kotlin 标准库版本 —— 否则 CI 会失败在 :app:checkDebugDuplicateClasses：
+     *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
+     *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
+     *     kotlin-stdlib-jdk8-1.6.21.jar   （另一条依赖链带进来的）
+     *
+     * 1.8 起 kotlin-stdlib-jdk7/jdk8 的类已并入 kotlin-stdlib，所以只要还有一条链
+     * 带进旧版 jdk7/jdk8，就会和新的 stdlib 撞类。这里三管齐下：
+     *   1) resolutionStrategy.force —— 直接钉住版本
+     *   2) eachDependency 重写     —— 对付不遵守 force 的传递依赖
+     *   3) 显式声明 1.8.22         —— 作为直接依赖参与版本仲裁
+     * 这个项目里没有任何 Kotlin 代码，标准库纯粹是 AndroidX 的传递依赖，
+     * 统一版本没有副作用。
+     */
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
 }
 
-/*
- * 统一 Kotlin 标准库版本 —— 否则 CI 会失败在 :app:checkDebugDuplicateClasses：
- *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
- *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
- *     kotlin-stdlib-jdk8-1.6.21.jar   （另一条依赖链带进来的）
- *
- * 试过但**不够**的两种写法：
- *   1. 只写 implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
- *      —— 实测依赖树里 jdk7/jdk8 仍是 1.6.21。Gradle 对这两个后缀模块有
- *      自己的版本对齐规则，声明版本压不住传递进来的旧版本。
- *   2. 只写 resolutionStrategy.force
- *      —— force 只是"偏好"，旧版本照样留在图里。
- *
- * 真正有效的是 eachDependency 重写：任何一方请求 kotlin-stdlib 家族的任何模块，
- * 一律改写成 1.8.22。这个项目里没有任何 Kotlin 代码，标准库纯粹是 AndroidX
- * 带进来的传递依赖，统一版本没有副作用。
- */
-configurations.all {
-    resolutionStrategy.eachDependency { details ->
-        if (details.requested.group == 'org.jetbrains.kotlin' &&
-            details.requested.name.startsWith('kotlin-stdlib')) {
-            details.useVersion '1.8.22'
-            details.because '统一 Kotlin 标准库版本，避免重复类'
+configurations.configureEach {
+    resolutionStrategy {
+        force 'org.jetbrains.kotlin:kotlin-stdlib:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22'
+        force 'org.jetbrains.kotlin:kotlin-stdlib-common:1.8.22'
+        eachDependency { details ->
+            if (details.requested.group == 'org.jetbrains.kotlin' &&
+                details.requested.name.startsWith('kotlin-stdlib')) {
+                details.useVersion '1.8.22'
+            }
         }
     }
 }

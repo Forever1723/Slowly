@@ -88,20 +88,27 @@ jobs:
       - name: 重新生成离线界面
         run: node "${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
 
-      # 把依赖树打进日志：万一还有冲突，日志里能直接看到是哪两个版本撞了，
-      # 不用再猜一轮（每轮 CI 要几分钟）
-      - name: 查看依赖树（排查冲突用）
+      # 依赖诊断：万一还有冲突，日志里能直接看到是哪两个版本撞了、由谁带进来。
+      # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped，日志里什么都没有。
+      - name: Kotlin dependency diagnosis
         working-directory: ${{ steps.locate.outputs.root }}/android
-        run: gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 | grep -i kotlin || true
+        run: |
+          echo "=== debugRuntimeClasspath 里的 kotlin 模块 ==="
+          gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
+            | grep -E 'kotlin-stdlib' || echo "(依赖树里没有 kotlin-stdlib)"
+          echo ""
+          echo "=== jdk7 是哪个依赖带进来的 ==="
+          gradle :app:dependencyInsight --configuration debugRuntimeClasspath \
+            --dependency kotlin-stdlib-jdk7 --no-daemon 2>&1 | head -40 || true
 
-      - name: 编译 Debug APK
+      - name: Build debug APK
         working-directory: ${{ steps.locate.outputs.root }}/android
         run: gradle assembleDebug --no-daemon --stacktrace
 
-      - name: 显示产物
+      - name: Show artifacts
         run: ls -lh "${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/"
 
-      - name: 上传 APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: slowly-debug-apk
