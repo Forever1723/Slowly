@@ -97,13 +97,12 @@ jobs:
           gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
             | grep -E 'kotlin-stdlib' || echo "(没有 kotlin-stdlib 条目)"
           echo ""
-          echo "=== 是否还有被排除标记 ==="
-          gradle :app:dependencies --configuration debugRuntimeClasspath --no-daemon 2>&1 \
-            | grep -E '\(n\)|-> ' | grep -i kotlin || echo "(没有 kotlin 相关的替换或排除)"
-          echo ""
-          echo "=== jdk7 的来源链 ==="
+          echo "=== jdk8 的完整来源链（关键：谁把它带进来的）==="
           gradle :app:dependencyInsight --configuration debugRuntimeClasspath \
-            --dependency kotlin-stdlib-jdk7 --no-daemon 2>&1 | head -30 || true
+            --dependency kotlin-stdlib-jdk8 --no-daemon 2>&1 | head -60 || true
+          echo ""
+          echo "=== 全部配置里出现 kotlin-stdlib-jdk8 的位置 ==="
+          gradle :app:dependencies --no-daemon 2>&1 | grep -B4 'kotlin-stdlib-jdk8' | head -60 || true
 
       - name: Build debug APK
         working-directory: ${{ steps.locate.outputs.root }}/android
