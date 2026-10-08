@@ -395,12 +395,22 @@ dependencies {
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:label="@string/app_name">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- 扫码配对：电脑「连接」页的二维码编的是 slowly://pair?token=..&srv=..
+                 扫到就用这个 App 打开，并把配对信息带进去，省去手输电脑地址。 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="slowly" android:host="pair" />
             </intent-filter>
         </activity>
     </application>
@@ -469,6 +479,60 @@ public class MainActivity extends Activity {
         });
 
         web.loadUrl("file:///android_asset/index.html");
+
+        // 如果这次是从扫码链接冷启动的，等页面起来后把配对信息补进去
+        deliverPairLinkWhenReady(getIntent());
+    }
+
+    /**
+     * 扫码配对进来的链接形如：
+     *   slowly://pair?token=ABC123&srv=http%3A%2F%2F192.168.1.5%3A8787%2F
+     * 把这两个参数交给网页，由网页写进自己的设置里并立刻试同步。
+     *
+     * 两种时机都要处理：
+     *   - App 没开着：链接把 App 拉起来，等页面加载完再注入
+     *   - App 已经开着：直接注入，页面立刻生效
+     */
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        deliverPairLink(intent);
+    }
+
+    /** 从 intent 里取出配对参数并注入网页；不是配对链接就什么都不做 */
+    private void deliverPairLink(android.content.Intent intent) {
+        if (intent == null || web == null) return;
+        android.net.Uri data = intent.getData();
+        if (data == null || !"slowly".equals(data.getScheme())) return;
+
+        String token = data.getQueryParameter("token");
+        String srv = data.getQueryParameter("srv");
+        if (token == null || token.isEmpty()) return;
+
+        // 用 JSON 转义，避免地址里的引号把注入的脚本弄坏
+        String js = "window.SlowlyPair && window.SlowlyPair(" +
+                org.json.JSONObject.quote(token) + "," +
+                org.json.JSONObject.quote(srv == null ? "" : srv) + ")";
+        final String script = js;
+
+        web.post(new Runnable() {
+            @Override
+            public void run() {
+                web.evaluateJavascript(script, null);
+            }
+        });
+    }
+
+    /** 页面加载完成后再补一次：App 是被链接冷启动时，onCreate 里注入会太早 */
+    private void deliverPairLinkWhenReady(final android.content.Intent intent) {
+        if (intent == null || intent.getData() == null) return;
+        web.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                deliverPairLink(intent);
+            }
+        }, 900);
     }
 
     @Override

@@ -243,7 +243,7 @@
 
   /* ---------------- 状态 ---------------- */
   var state = { goals: [], moods: {}, notes: {}, tombstones: {} };
-  var meta = { rev: -1, server: {}, savedAt: 0, lastWriter: "" };
+  var meta = { rev: -1, server: {}, savedAt: 0, lastWriter: "", pairing: null };
   var activity = [];
   var ui = { cat: "must", view: "today", ready: false, offline: false };
 
@@ -315,6 +315,7 @@
     if (snap.savedAt) meta.savedAt = snap.savedAt;
     if (typeof snap.lastWriter === "string") meta.lastWriter = snap.lastWriter;
     if (snap.server) meta.server = snap.server;
+    if (snap.pairing) meta.pairing = snap.pairing;
     if (Array.isArray(snap.activity)) activity = snap.activity;
   }
 
@@ -981,7 +982,7 @@
       else b.removeAttribute("aria-current");
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
-    if (name === "share") { loadQr(); loadOfflineQr(); }
+    if (name === "share") { loadPairing(); loadQr(); loadOfflineQr(); }
   }
 
   var qrLoaded = false;
@@ -1027,6 +1028,73 @@
         $("offlineQr").innerHTML = '<div class="tip" style="padding:20px 8px">二维码生成失败，可以在手机上打开下面这个地址：<br>' + esc(dl) + "</div>";
       });
   }
+
+  /* ---------------- 扫码配对 ----------------
+   *
+   * 目的是免去手输电脑地址：手机相机扫一下二维码，地址就带过去了。
+   * 两种码各有用处：
+   *   1. 线上版链接 —— 手机浏览器直接打开一个已配好的 Slowly，最通用
+   *   2. App 深链   —— 已经装了安卓 App 时，一扫码就把地址填进 App
+   * 都扫不了时还能手抄那 6 位配对码，比抄 IP 短得多。
+   */
+  var pairLoaded = "";
+  function loadPairing() {
+    var card = $("pairCard");
+    if (!card) return;
+    /* 只有跑在电脑端（有服务器）时才显示这张卡片 */
+    if (ui.offline || ui.static) { card.hidden = true; return; }
+    var pairing = meta.pairing || (meta.server && meta.server.pairing);
+    if (!pairing || !pairing.pairUrl) { card.hidden = true; return; }
+    card.hidden = false;
+
+    $("pairCode").textContent = pairing.code || pairing.token || "—";
+    $("pairLan").textContent = pairing.lanUrl || "（没找到局域网地址，确认电脑连着 WiFi）";
+
+    /* 深链形状：slowly://pair?token=xxx&srv=http%3A%2F%2F10.0.0.2%3A8787%2F */
+    var appUrl = "slowly://pair?token=" + encodeURIComponent(pairing.token) +
+      "&srv=" + encodeURIComponent(pairing.lanUrl || "");
+    $("pairAppUrl").textContent = appUrl;
+
+    if (pairLoaded === pairing.pairUrl) return;
+    pairLoaded = pairing.pairUrl;
+
+    function draw(holderId, target, onFail) {
+      var holder = $(holderId);
+      if (!holder) return;
+      fetch("/api/qr?url=" + encodeURIComponent(target))
+        .then(function (r) { return r.text(); })
+        .then(function (svg) {
+          if (svg.indexOf("<svg") !== 0) throw new Error("二维码生成失败");
+          holder.innerHTML = svg;
+        })
+        .catch(function () { if (onFail) holder.innerHTML = onFail; });
+    }
+
+    draw("pairQr", pairing.pairUrl,
+      '<div class="tip" style="padding:24px 10px">二维码没生成出来。<br>可以在手机浏览器直接打开：<br>' + esc(pairing.pairUrl) + "</div>");
+    draw("pairAppQr", appUrl,
+      '<div class="tip" style="padding:24px 10px">二维码没生成出来。<br>装了安卓 App 的话，手输 6 位配对码也行。</div>');
+  }
+
+  /* 安卓 App 的扫码配对入口。
+     原生那边（MainActivity）解析 slowly://pair?token=..&srv=.. 之后调用
+     window.SlowlyPair(令牌, 电脑地址)。浏览器里不存在这个函数也不影响。 */
+  function applyNativePair(token, serverUrl) {
+    if (!SYNC || !token) return;
+    SYNC.setPairToken(String(token).trim().toUpperCase());
+    if (serverUrl) SYNC.setServerUrl(SYNC.normalizeUrl(serverUrl));
+    toast("正在完成配对…");
+    SYNC.verifyPairing().then(function () {
+      toast("配对成功，已连上电脑 " + SYNC.getServerUrl(), "good");
+      renderShare();
+      syncNow(true);
+    }).catch(function (err) {
+      SYNC.setPairToken("");
+      toast("配对没成功：" + err.message + "（确认手机和电脑在同一个 WiFi，然后重新扫码）", "warn");
+      renderShare();
+    });
+  }
+  if (typeof window !== "undefined") window.SlowlyPair = applyNativePair;
 
   /* ---------------- 备份 ---------------- */
   function importState(nextState, action) {
@@ -1188,14 +1256,40 @@
   if ($("setUrlBtn")) {
     $("setUrlBtn").addEventListener("click", function () {
       var cur = SYNC.getServerUrl();
-      var v = window.prompt("电脑的地址（在电脑上的 Slowly →「连接」页可以看到，形如 192.168.1.5:8787）", cur || "192.168.1.5:8787");
+      var hasToken = SYNC.getPairToken && SYNC.getPairToken();
+      var v = window.prompt(
+        "电脑的地址。\n\n最快的办法是在电脑上的「连接」页扫二维码，地址会自动填好；\n扫不了时再手填，形如 192.168.1.5:8787",
+        cur || "192.168.1.5:8787");
       if (v === null) return;
       var url = SYNC.normalizeUrl(v);
       if (!url) { toast("地址没填，已取消", "warn"); return; }
       SYNC.setServerUrl(url);
-      toast("记下了：" + url + "，正在试连…", "good");
-      renderShare();
-      autoSyncSoon(true);
+
+      /* 电脑「连接」页上还显示着 6 位配对码，填上它就能确认配对了哪台电脑。
+         嫌麻烦直接留空也能用（局域网里连得上就行）。 */
+      var code = window.prompt(
+        "电脑上显示的 6 位配对码（在「扫码配对」卡片里）。\n留空就直接连，不校验配对。",
+        hasToken || "");
+      if (code === null) code = "";
+      code = String(code).trim().toUpperCase();
+
+      if (!code) {
+        toast("记下了：" + url + "，正在试连…", "good");
+        renderShare();
+        autoSyncSoon(true);
+        return;
+      }
+
+      toast("正在校验配对码…");
+      SYNC.pairWithToken(code, url).then(function () {
+        toast("配对成功，这台设备已连上 " + url, "good");
+        renderShare();
+        syncNow(true);
+      }).catch(function (err) {
+        toast("配对失败：" + err.message, "warn");
+        renderShare();
+        autoSyncSoon(true);
+      });
     });
   }
   if ($("installBtn")) {
@@ -1286,9 +1380,26 @@
     return "offline";
   }
 
+  /* 扫码配对：如果当前地址里带着配对信息（#pair=… 或 ?pair=…），
+     就在启动时立刻应用 —— 用户扫完码打开页面，地址已经被填好了。
+     返回 true 表示这次是"扫码进来的"，界面需要给个提示。 */
+  function applyPairingOnBoot() {
+    if (!SYNC || typeof SYNC.applyPairingFromLocation !== "function") return null;
+    var applied = null;
+    try { applied = SYNC.applyPairingFromLocation(); } catch (e) { applied = null; }
+    if (!applied) return null;
+    /* 地址栏已经清干净了，这里把结果告诉界面 */
+    if (applied.serverUrl) {
+      meta.server = Object.assign({}, meta.server || {}, { lanUrl: applied.serverUrl });
+    }
+    return applied;
+  }
+
   function bootLocal(mode) {
     ui.offline = true;
     ui.mode = mode;
+    /* 先应用扫码结果，再读本地数据与渲染 */
+    var paired = applyPairingOnBoot();
     state = readLocal();
     if (!state.seed) state.seed = String(Date.now());
     writeLocal(state);
@@ -1330,8 +1441,34 @@
       connect();
       setSyncUI();
       askDeviceName(false);
+      handlePairingAfterBoot();
     });
   } else {
     askDeviceName(false);
+    handlePairingAfterBoot();
+  }
+
+  /* 启动后处理扫码配对。
+     两种情况：
+       - 从手机相机扫进来的：地址里带着 #pair=…&srv=…，刚才已由
+         applyPairingFromLocation 记下了地址与令牌，这里只做一次校验与提示
+       - 电脑网页版里点了"配对"：地址是 ?pair=…，用来确认这台设备已配对
+     校验失败就把令牌清掉，免得留下一个连不上的状态。 */
+  function handlePairingAfterBoot() {
+    if (!SYNC || ui.mode === "server") return;
+    var token = SYNC.getPairToken && SYNC.getPairToken();
+    if (!token) return;
+    if (!SYNC.getServerUrl()) return;
+    setTimeout(function () {
+      SYNC.verifyPairing().then(function () {
+        toast("已配对到电脑 " + SYNC.getServerUrl(), "good");
+        renderShare();
+        syncNow(true);
+      }).catch(function (err) {
+        SYNC.setPairToken("");
+        toast("配对没成功：" + err.message + "（可以重新扫一次码）", "warn");
+        renderShare();
+      });
+    }, 400);
   }
 })();

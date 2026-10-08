@@ -154,19 +154,22 @@ if (fs.existsSync(androidDir)) {
   ok(/minSdk\s+24/.test(gradle), "minSdk 24（安卓 7.0 及以上都能装）");
   ok(/compileSdk\s+34/.test(gradle), "compileSdk 34");
 
-  const actions = path.join(androidDir, ".github", "workflows", "build-apk.yml");
-  ok(fs.existsSync(actions), "附带了 GitHub Actions 一键编译工作流");
-  if (fs.existsSync(actions)) {
-    const wf = fs.readFileSync(actions, "utf8");
-    ok(wf.includes("assembleDebug"), "工作流会编译 debug APK");
-    ok(wf.includes("upload-artifact"), "工作流会产出可下载的 APK");
-  }
-  /* GitHub 只认仓库根目录的 .github/workflows/，两处必须一致 */
+  /* 工作流只放在仓库根目录 —— GitHub 只执行 .github/workflows/ 下的文件，
+     放在 android/.github/ 下永远不会运行，只会让人以为有两条构建途径。 */
   const rootActions = path.join(ROOT, ".github", "workflows", "build-apk.yml");
-  ok(fs.existsSync(rootActions), "仓库根目录也有工作流（GitHub 只认这个位置）");
-  if (fs.existsSync(rootActions) && fs.existsSync(actions)) {
-    ok(fs.readFileSync(rootActions, "utf8") === fs.readFileSync(actions, "utf8"),
-       "两处工作流内容一致");
+  ok(fs.existsSync(rootActions), "仓库根目录有 GitHub Actions 一键编译工作流");
+  if (fs.existsSync(rootActions)) {
+    const wf = fs.readFileSync(rootActions, "utf8");
+    ok(wf.includes("assembleRelease"), "工作流会编译 release APK");
+    ok(wf.includes("upload-artifact"), "工作流会产出可下载的 APK");
+    /* "on" 必须带引号：YAML 会把裸写的 on 解析成布尔值 true，
+       GitHub 读的是字符串键 "on"，不加引号会让所有触发器失效 ——
+       这个坑真踩过，现象是工作流永远不会运行、名字还退化成文件路径。 */
+    ok(/^"on":/m.test(wf), 'on 键带引号（裸写的 on 会被 YAML 当成布尔值，触发器会失效）');
+    ok(wf.includes("workflow_dispatch"), "支持手动触发");
+    /* android/.github 下的那份副本不该再出现 */
+    const strayActions = path.join(androidDir, ".github", "workflows", "build-apk.yml");
+    ok(!fs.existsSync(strayActions), "android/.github 下没有多余的工作流副本（那个位置 GitHub 不执行）");
   }
 
   const buildDoc = path.join(androidDir, "BUILD.md");

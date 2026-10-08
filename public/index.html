@@ -398,6 +398,31 @@ textarea:focus{ border-color:var(--clay-soft); box-shadow:0 0 0 4px rgba(232,161
         </div>
       </div>
 
+      <div class="card" id="pairCard" hidden>
+        <div class="card-head"><h2>扫码配对</h2><span class="hint">不用手输地址</span></div>
+        <div class="qr-box">
+          <div id="pairQr"><div class="skel" style="width:190px;height:190px;border-radius:14px;margin:0 auto"></div></div>
+          <div class="tip" style="margin-top:8px">
+            用手机相机扫这个码 → 打开 Slowly → 自动连上这台电脑
+          </div>
+        </div>
+        <div class="rows" style="margin-top:14px">
+          <div class="row"><span class="k">配对码</span><span class="v mono" id="pairCode">—</span></div>
+          <div class="row"><span class="k">电脑地址</span><span class="v mono" id="pairLan">—</span></div>
+        </div>
+        <div class="words" style="margin-top:10px">
+          已经装了安卓 App？扫下面这个码会直接打开 App 并填好地址：
+        </div>
+        <div class="qr-box" style="margin-top:10px">
+          <div id="pairAppQr" style="min-height:150px"></div>
+          <div class="url" id="pairAppUrl">正在生成…</div>
+        </div>
+        <div class="words" style="margin-top:11px">
+          都扫不了时：上面的 <b>6 位配对码</b> 就是备用方案 ——
+          在手机 App 的「填写电脑地址」里把地址和这串码填进去即可，比手抄 IP 短得多。
+        </div>
+      </div>
+
       <div class="card" id="syncCard" hidden>
         <div class="card-head"><h2>与电脑同步</h2><span class="hint" id="syncHint">可选</span></div>
         <div class="rows">

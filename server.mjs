@@ -192,16 +192,133 @@ function loadFromDisk() {
   return false;
 }
 
-/* 原子写入：先写临时文件再改名，避免断电/崩溃留下半个文件 */
-async function persist(writer) {
+/* 线上版地址：二维码优先指向它。
+   为什么用线上版而不是直接指向电脑：线上版装过一次就一直存在手机主屏上，
+   以后离开 WiFi 也能记，回家同步即可；而且扫码后由线上版自己完成配对，
+   手机浏览器和安卓 App 用的是同一套逻辑。留空则退回直接指向电脑的地址。 */
+const HOSTED_APP = String(process.env.SLOWLY_HOSTED || "https://forever1723.github.io/Slowly/").trim();
+
+/* ---------------- 配对令牌 ----------------
+ *
+ * 为什么需要它：手机要同步，就得知道电脑的地址。手输 IP 又长又容易错。
+ * 这里的做法是把「地址 + 一个令牌」编进二维码，手机扫一下就把
+ * 电脑的地址记下来了 —— 一个字符都不用敲。
+ *
+ * 令牌存在数据目录下的 pairing.json，跟着数据走：换数据目录就等于换一套配对。
+ * 它只是个"局域网里的握手凭据"，不是账号密码 —— 拿到它的人仍然必须
+ * 处在同一个局域网里才能连上这台电脑。
+ */
+const PAIR_FILE = () => path.join(DATA_DIR, "pairing.json");
+
+function makeToken() {
+  /* 去掉容易看错的 0/O/1/I，方便用户需要时手抄 */
+  const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
+  const bytes = crypto.randomBytes(6);
+  let out = "";
+  for (const b of bytes) out += alphabet[b % alphabet.length];
+  return out;
+}
+
+let pairToken = "";
+let pairCreatedAt = 0;
+
+async function loadPairToken() {
+  try {
+    const raw = await fsp.readFile(PAIR_FILE(), "utf8");
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.token === "string" && parsed.token.length >= 4) {
+      pairToken = parsed.token;
+      pairCreatedAt = Number(parsed.createdAt) || 0;
+      return;
+    }
+  } catch { /* 首次运行没有这个文件，属正常 */ }
+  pairToken = makeToken();
+  pairCreatedAt = Date.now();
+  await savePairToken();
+}
+
+async function savePairToken() {
+  try {
+    await fsp.mkdir(DATA_DIR, { recursive: true });
+    const tmp = PAIR_FILE() + ".tmp-" + process.pid;
+    await fsp.writeFile(tmp, JSON.stringify({ token: pairToken, createdAt: pairCreatedAt }, null, 2), "utf8");
+    await fsp.rename(tmp, PAIR_FILE());
+  } catch { /* 写不进去也不该影响主流程，下次启动会重新生成 */ }
+}
+
+async function rotatePairToken() {
+  pairToken = makeToken();
+  pairCreatedAt = Date.now();
+  await savePairToken();
+  return pairToken;
+}
+
+function pairingSnapshot() {
+  const lan = lanUrl();
+  const token = pairToken;
+  /* 扫码后打开的地址：优先线上版，带上令牌与电脑地址。
+     令牌放在 # 里 —— 片段不会发给任何服务器，只有手机本地能读到。 */
+  let pairUrl = "";
+  if (HOSTED_APP) {
+    const base = HOSTED_APP.replace(/#.*$/, "");
+    const parts = ["pair=" + encodeURIComponent(token)];
+    if (lan) parts.push("srv=" + encodeURIComponent(lan));
+    pairUrl = base + "#" + parts.join("&");
+  } else if (lan) {
+    pairUrl = lan + "?pair=" + encodeURIComponent(token);
+  }
+  return {
+    token: token,
+    code: token,
+    createdAt: pairCreatedAt,
+    lanUrl: lan,
+    lanUrls: lanAddresses().filter((a) => !a.virtual).map((a) => "http://" + a.address + ":" + PORT + "/"),
+    hosted: HOSTED_APP,
+    /* 二维码就编这个地址 */
+    pairUrl: pairUrl,
+  };
+}
+
+/*
+ * 原子写入：先写临时文件再改名，避免断电/崩溃留下半个文件。
+ *
+ * 两个要点，都是踩过的坑：
+ *
+ * 1) **必须串行**。并发请求会同时进来，如果几个 persist 并行跑，
+ *    它们会争同一个临时文件：A 改名成功之后，B 仍然握着那个路径继续写，
+ *    于是把半截内容追加到了已经改名的正式文件后面 —— 数据文件直接损坏
+ *    （实测出现过 "Unexpected non-whitespace character after JSON"，
+ *     文件里是"一个完整文档 + 半截对象"）。所以这里用一条 promise 链
+ *    把写入排队，谁先来谁先写。
+ *
+ * 2) **临时文件名必须唯一**。原来用 DATA_FILE + ".tmp-" + pid，
+ *    同一进程内的并发写入会撞名。加上递增序号区分。
+ */
+let writeChain = Promise.resolve();
+let writeSeq = 0;
+
+function persist(writer) {
+  /* 排队：即使上一次写失败，也不能卡住后面的写入 */
+  const task = writeChain.then(() => doPersist(writer), () => doPersist(writer));
+  writeChain = task.catch(() => { });
+  return task;
+}
+
+async function doPersist(writer) {
   rev += 1;
   savedAt = Date.now();
   lastWriter = writer || "";
   const payload = JSON.stringify({ rev, savedAt, lastWriter, state }, null, 2);
   await fsp.mkdir(DATA_DIR, { recursive: true });
-  const tmp = DATA_FILE + ".tmp-" + process.pid;
-  await fsp.writeFile(tmp, payload, "utf8");
-  await fsp.rename(tmp, DATA_FILE);
+  const tmp = DATA_FILE + ".tmp-" + process.pid + "-" + (writeSeq++);
+  try {
+    await fsp.writeFile(tmp, payload, "utf8");
+    await fsp.rename(tmp, DATA_FILE);
+  } catch (e) {
+    /* 写失败时清掉可能残留的临时文件，别在数据目录里越积越多 */
+    try { await fsp.unlink(tmp); } catch { /* 本来就没写出来 */ }
+    throw e;
+  }
   /* 每天首次写入时留一份备份，最多保留 14 份 */
   await maybeBackup();
   return rev;
@@ -476,8 +593,27 @@ async function handleApi(req, res, url) {
         addresses: lanAddresses(),
         clients: clients.size,
         uptime: Math.round(process.uptime())
-      }
+      },
+      pairing: pairingSnapshot()
     });
+  }
+
+  /* 配对：手机扫码后由网页调这个接口，把「地址 + 令牌」登记成自己的同步目标。
+     GET 返回配对信息（令牌本身就是局域网内的握手凭据）；POST 用于换一个令牌。 */
+  if (action === "pair" && req.method === "GET") {
+    return json(res, 200, { ok: true, pairing: pairingSnapshot() });
+  }
+
+  if (action === "pair" && req.method === "POST") {
+    await rotatePairToken();
+    return json(res, 200, { ok: true, pairing: pairingSnapshot() });
+  }
+
+  /* 校验一个令牌对不对：手机提交后调用，确认"确实配对到了这台电脑" */
+  if (action === "pair/verify" && req.method === "GET") {
+    const given = String(url.searchParams.get("token") || "");
+    const okToken = given && given.toUpperCase() === String(pairToken).toUpperCase();
+    return json(res, okToken ? 200 : 403, { ok: Boolean(okToken) });
   }
 
   if (action === "events" && req.method === "GET") return sseHandler(req, res, url);
@@ -657,6 +793,9 @@ server.on("error", (err) => {
 ensureDataDirWritable();
 loadFromDisk();
 
+/* 配对令牌：二维码里要带它，所以启动时先准备好 */
+await loadPairToken();
+
 server.listen(PORT, "0.0.0.0", () => {
   banner();
   const url = "http://127.0.0.1:" + PORT + "/";
@@ -671,4 +810,4 @@ process.on("SIGINT", () => {
   process.exit(0);
 });
 
-export { server, DATA_FILE, lanUrl, lanAddresses };
+export { server, DATA_FILE, lanUrl, lanAddresses, pairingSnapshot, rotatePairToken };

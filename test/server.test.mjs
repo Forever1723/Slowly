@@ -228,7 +228,80 @@ try {
   r = await fetch(BASE + "/");
   ok(r.status === 404 || r.status === 200, "根路径有响应（前端未安装时为 404）");
 
-  console.log("10) 重启后数据仍在");
+  console.log("10) 配对：扫码绑定用的令牌");
+
+  /* 配对令牌：手机扫码后靠它确认"连的是这台电脑" */
+  const pair1 = await (await fetch(BASE + "/api/pair")).json();
+  ok(typeof pair1.pairing.token === "string" && pair1.pairing.token.length >= 4,
+    "配对接口给出令牌：" + pair1.pairing.token);
+  ok(/^[0-9A-Z]+$/.test(pair1.pairing.token), "令牌只含大写字母与数字（便于手抄）");
+  ok(!/[01OI]/.test(pair1.pairing.token), "令牌不含 0/O/1/I（避免看错）");
+  ok(typeof pair1.pairing.pairUrl === "string" && pair1.pairing.pairUrl.includes("#pair="),
+    "给出可直接编成二维码的配对链接：" + pair1.pairing.pairUrl);
+  /* 令牌必须放在 # 片段里 —— 片段不会发给任何服务器 */
+  ok(pair1.pairing.pairUrl.indexOf("#pair=") > pair1.pairing.pairUrl.indexOf("://") + 3,
+    "配对令牌放在 URL 片段里（不会随请求发给服务器）");
+
+  const st = await (await fetch(BASE + "/api/state")).json();
+  ok(st.pairing && st.pairing.token === pair1.pairing.token, "状态接口里也带上了配对信息");
+
+  let vr = await fetch(BASE + "/api/pair/verify?token=" + encodeURIComponent(pair1.pairing.token));
+  ok(vr.status === 200, "用正确令牌校验通过");
+  vr = await fetch(BASE + "/api/pair/verify?token=WRONG9");
+  ok(vr.status === 403, "用错误令牌被拒绝");
+
+  const rotated = await (await fetch(BASE + "/api/pair", { method: "POST" })).json();
+  ok(rotated.pairing.token !== pair1.pairing.token, "可以换一个新令牌");
+  vr = await fetch(BASE + "/api/pair/verify?token=" + encodeURIComponent(pair1.pairing.token));
+  ok(vr.status === 403, "换过之后旧令牌立即失效");
+  /* 令牌要落盘，重启后仍然认得同一台电脑 */
+  const pairFile = path.join(path.dirname(DATA_FILE), "pairing.json");
+  ok(fs.existsSync(pairFile), "令牌写到了磁盘（重启后仍是同一个）");
+  const pairOnDisk = JSON.parse(fs.readFileSync(pairFile, "utf8"));
+  ok(pairOnDisk.token === rotated.pairing.token, "磁盘上的令牌与当前一致");
+
+  console.log("11) 并发写入不会损坏数据文件");
+
+  /* 回归：曾经因为共用一个临时文件名，并发写入会把半截内容追加到
+     已改名的正式文件后面，数据文件直接变成"完整文档 + 半截对象"，
+     解析时报 Unexpected non-whitespace character after JSON。
+     这里连续多轮并发写，每轮都检查磁盘文件仍能解析、且与内存一致。 */
+  let corrupt = 0;
+  for (let round = 1; round <= 6; round++) {
+    const burst2 = [];
+    for (let i = 0; i < 10; i++) {
+      burst2.push(fetch(BASE + "/api/action", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "goal.add",
+          goal: { id: "race-" + round + "-" + i, title: "并发写 " + round + "-" + i, cat: "should", date: "2026-01-02", done: false, doneAt: "", created: Date.now(), carry: 0, updatedAt: Date.now() }
+        })
+      }));
+    }
+    await Promise.all(burst2);
+    const live = await (await fetch(BASE + "/api/state")).json();
+    let disk = null;
+    try {
+      disk = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+    } catch (e) {
+      corrupt++;
+      console.log("    第 " + round + " 轮磁盘文件解析失败：" + e.message);
+      continue;
+    }
+    if (disk.state.goals.length !== live.state.goals.length) {
+      corrupt++;
+      console.log("    第 " + round + " 轮磁盘(" + disk.state.goals.length + ") 与内存(" + live.state.goals.length + ") 不一致");
+    }
+    if (disk.rev !== live.rev) {
+      corrupt++;
+      console.log("    第 " + round + " 轮 rev 不一致：磁盘 " + disk.rev + " 内存 " + live.rev);
+    }
+  }
+  ok(corrupt === 0, "6 轮并发写入后数据文件始终可解析且与内存一致");
+
+  console.log("12) 重启后数据仍在");
+  /* 基线取"重启前一刻"的状态：前面的并发写入测试又加了不少记录，
+     用更早的快照比会误判。 */
   const preRestart = await (await fetch(BASE + "/api/state")).json();
   child.kill();
   await sleep(600);
@@ -242,7 +315,8 @@ try {
   }
   ok(ready2, "重启后重新就绪");
   const snap2 = await (await fetch(BASE + "/api/state")).json();
-  ok(snap2.state.goals.length === snap.state.goals.length, "重启后目标数量不变（" + snap2.state.goals.length + "）");
+  ok(snap2.state.goals.length === preRestart.state.goals.length,
+    "重启后目标数量不变（" + preRestart.state.goals.length + " -> " + snap2.state.goals.length + "）");
   ok(snap2.rev === preRestart.rev, "重启后 rev 延续（" + preRestart.rev + " -> " + snap2.rev + "）");
   ok(snap2.state.notes["2026-01-02"].includes("有点累"), "重启后随笔仍在");
   child2.kill();

@@ -1,4 +1,4 @@
-﻿/* =============================================================
+/* =============================================================
    离线版验证（干净版）
    做法：把真实生成的 public/offline.html 里的两段脚本，在"手机环境"里执行一次，
         用最小 DOM + 内存 localStorage 观察行为；之后连一个真实服务器验证合并。
@@ -169,7 +169,13 @@ const sandbox = {
   FileReader: class { readAsText() {} },
   console, URL: globalThis.URL, Blob: globalThis.Blob, AbortController: globalThis.AbortController,
   confirm: () => true,
-  prompt: () => globalThis.__promptAnswer,
+  /* prompt 会被问两次：先问电脑地址，再问 6 位配对码（可留空）。
+     用一个队列按顺序回答，这样能真实反映"地址填了、配对码留空"的用法。 */
+  prompt: () => {
+    const q = globalThis.__promptQueue;
+    if (Array.isArray(q) && q.length) return q.shift();
+    return globalThis.__promptAnswer;
+  },
   scrollTo: () => {},
   addEventListener: () => {}
 };
@@ -288,10 +294,12 @@ await realFetch(BASE + "/api/action", {
 
 console.log("6) 填地址 -> 自动同步");
 allowNetwork = true;
-globalThis.__promptAnswer = "127.0.0.1:" + PORT;
+/* 第一次问地址，第二次问配对码（留空 = 不校验配对，直接连） */
+globalThis.__promptQueue = ["127.0.0.1:" + PORT, ""];
 g("setUrlBtn").fire("click");
 await sleep(2500);
 ok(String(mem.get("slowly.serverUrl") || "").includes(String(PORT)), "电脑地址已记住：" + mem.get("slowly.serverUrl"));
+ok(!mem.get("slowly.pairToken"), "配对码留空时不会把地址误记成令牌");
 
 const srv1 = await (await realFetch(BASE + "/api/state")).json();
 const titles = srv1.state.goals.map((x) => x.title);
@@ -307,11 +315,14 @@ await realFetch(BASE + "/api/action", {
   method: "POST", headers: { "content-type": "application/json", "x-slowly-device": encodeURIComponent("我的电脑") },
   body: JSON.stringify({
     action: "goal.add",
-    goal: { id: "pc-after-sync", title: "同步之后电脑才写的", cat: "bonus", date: "2026-10-07", done: false, doneAt: "", created: Date.now(), updatedAt: Date.now(), carry: 0 }
+    goal: { id: "pc-after-sync", title: "同步之后电脑才写的", cat: "bonus", date: sandbox.window.__todayKey ? sandbox.window.__todayKey() : new Date().toLocaleDateString("sv-SE"), done: false, doneAt: "", created: Date.now(), updatedAt: Date.now(), carry: 0 }
   })
 });
+console.log("     调试 同步前 goalList = " + JSON.stringify(String(htmlOf("goalList")).slice(0, 150)));
+console.log("     调试 serverUrl = " + mem.get("slowly.serverUrl") + "  pairToken = " + mem.get("slowly.pairToken"));
 g("syncNowBtn").fire("click");
 await sleep(2500);
+console.log("     调试 同步后 goalList = " + JSON.stringify(String(htmlOf("goalList")).slice(0, 300)));
 ok(htmlOf("goalList").includes("同步之后电脑才写的"), "点「立即同步」后电脑的新记录出现在手机上");
 ok(mem.get("slowly.lastSync"), "记录了上次同步时间");
 

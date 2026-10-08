@@ -8,6 +8,7 @@
 
   var TOMBSTONE_KEEP_DAYS = 90;
   var URL_KEY = "slowly.serverUrl";
+  var PAIR_KEY = "slowly.pairToken";
   var LAST_SYNC_KEY = "slowly.lastSync";
 
   function num(v) { var n = Number(v); return isFinite(n) ? n : 0; }
@@ -135,6 +136,110 @@
       else localStorage.removeItem(URL_KEY);
     } catch (e) { /* 忽略 */ }
   }
+
+  /* ---------------- 配对 ----------------
+   *
+   * 扫码链接的形状（令牌放在 # 片段里，片段不会发给任何服务器）：
+   *   https://<线上版>/#pair=<令牌>&srv=<电脑地址>
+   * 也可能是电脑直接生成的：
+   *   http://<电脑地址>/?pair=<令牌>
+   *
+   * 拿到令牌后记在本地，之后每次请求都带上它 —— 电脑据此确认
+   * "这台手机确实是刚才扫过码的那台"。
+   */
+  function getPairToken() {
+    try { return localStorage.getItem(PAIR_KEY) || ""; } catch (e) { return ""; }
+  }
+  function setPairToken(t) {
+    try {
+      if (t) localStorage.setItem(PAIR_KEY, String(t));
+      else localStorage.removeItem(PAIR_KEY);
+    } catch (e) { /* 忽略 */ }
+  }
+
+  function parsePairHash(hash) {
+    var raw = String(hash || "").replace(/^#/, "");
+    if (!raw) return null;
+    var out = {};
+    raw.split("&").forEach(function (kv) {
+      var i = kv.indexOf("=");
+      if (i <= 0) return;
+      var k = kv.slice(0, i);
+      var v = kv.slice(i + 1);
+      try { v = decodeURIComponent(v); } catch (e) { /* 保持原样 */ }
+      out[k] = v;
+    });
+    if (!out.pair) return null;
+    return { token: out.pair, serverUrl: out.srv ? normalizeUrl(out.srv) : "" };
+  }
+
+  /* 从当前地址里读配对信息。读到就应用，并返回结果（没读到返回 null）。 */
+  function applyPairingFromLocation() {
+    if (typeof window === "undefined" || !window.location) return null;
+    var loc = window.location;
+    var info = parsePairHash(loc.hash);
+    var fromQuery = false;
+    if (!info) {
+      /* 电脑直接生成的链接用 ?pair= 的形式 */
+      var q = String(loc.search || "");
+      var m = /[?&]pair=([^&]+)/.exec(q);
+      if (m) {
+        var tk = m[1];
+        try { tk = decodeURIComponent(tk); } catch (e) { /* 保持原样 */ }
+        var sm = /[?&]srv=([^&]+)/.exec(q);
+        var sv = "";
+        if (sm) { try { sv = decodeURIComponent(sm[1]); } catch (e) { sv = sm[1]; } }
+        info = { token: tk, serverUrl: sv ? normalizeUrl(sv) : "" };
+        fromQuery = true;
+      }
+    }
+    if (!info) return null;
+
+    setPairToken(info.token);
+    /* srv 可能缺失（线上版扫码时理论上会带，但电脑直连形式不带） */
+    if (info.serverUrl) setServerUrl(info.serverUrl);
+
+    /* 把配对信息从地址栏抹掉：令牌不该长期留在历史记录里 */
+    try {
+      if (window.history && window.history.replaceState) {
+        var clean = loc.pathname + (fromQuery ? "" : "");
+        window.history.replaceState(null, "", clean || "/");
+      }
+    } catch (e) { /* 某些环境不允许改地址，忽略 */ }
+
+    return {
+      token: info.token,
+      serverUrl: getServerUrl(),
+      fromQuery: fromQuery,
+    };
+  }
+
+  /* 校验配对是否有效：拿当前令牌问一次电脑 */
+  function verifyPairing() {
+    var url = getServerUrl();
+    var token = getPairToken();
+    if (!url) return Promise.reject(new Error("还没有设置电脑地址"));
+    if (!token) return Promise.reject(new Error("还没有配对过"));
+    return request(url + "/api/pair/verify?token=" + encodeURIComponent(token), { method: "GET" }, 6000)
+      .then(function (r) { return { ok: Boolean(r && r.ok) }; });
+  }
+
+  /* 手动填令牌（手机在手，电脑上显示着 6 位码时用） */
+  function pairWithToken(code, serverUrl) {
+    var t = String(code || "").trim().toUpperCase();
+    if (!t) return Promise.reject(new Error("请先填写电脑上显示的 6 位码"));
+    if (serverUrl) setServerUrl(normalizeUrl(serverUrl));
+    if (!getServerUrl()) return Promise.reject(new Error("请先填写电脑地址"));
+    setPairToken(t);
+    return verifyPairing().then(function (r) {
+      if (!r.ok) {
+        setPairToken("");
+        throw new Error("这个码不对，或者电脑上已经换过码了");
+      }
+      return r;
+    });
+  }
+
   function getLastSync() {
     try { return Number(localStorage.getItem(LAST_SYNC_KEY) || 0); } catch (e) { return 0; }
   }
@@ -154,12 +259,20 @@
     return deviceName || "手机";
   }
 
+  /* 给请求地址带上配对令牌。令牌是配对时记下来的，
+     电脑据此确认"这台设备确实是扫过码的那台"。 */
+  function withPairToken(url) {
+    var token = getPairToken();
+    if (!token) return url;
+    return url + (url.indexOf("?") === -1 ? "?" : "&") + "token=" + encodeURIComponent(token);
+  }
+
   function request(url, options, timeoutMs) {
     var ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
     var timer = setTimeout(function () { if (ctl) ctl.abort(); }, timeoutMs || 6000);
     var opts = Object.assign({}, options || {});
     if (ctl) opts.signal = ctl.signal;
-    return fetch(url, opts).then(function (r) {
+    return fetch(withPairToken(url), opts).then(function (r) {
       clearTimeout(timer);
       return r.json().catch(function () { return {}; }).then(function (body) {
         if (!r.ok) throw new Error(body.error || ("电脑返回 " + r.status));
@@ -227,6 +340,12 @@
     normalizeUrl: normalizeUrl,
     getServerUrl: getServerUrl,
     setServerUrl: setServerUrl,
+    getPairToken: getPairToken,
+    setPairToken: setPairToken,
+    parsePairHash: parsePairHash,
+    applyPairingFromLocation: applyPairingFromLocation,
+    verifyPairing: verifyPairing,
+    pairWithToken: pairWithToken,
     getLastSync: getLastSync,
     markSynced: markSynced,
     currentDevice: currentDevice,
@@ -235,6 +354,7 @@
     sync: sync,
     ping: ping,
     URL_KEY: URL_KEY,
+    PAIR_KEY: PAIR_KEY,
     LAST_SYNC_KEY: LAST_SYNC_KEY
   };
 
