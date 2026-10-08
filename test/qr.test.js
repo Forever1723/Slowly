@@ -127,6 +127,27 @@ for (const s of samples) {
   }
 }
 
+/* 扫码配对用的链接比普通地址长得多（含令牌与完整地址），
+   单独特意验证一遍：万一以后地址格式变长，二维码放不下要立刻发现。 */
+console.log("4b) 配对链接也能编进二维码并原样解回");
+{
+  const pairCases = [
+    ["线上版配对链接", "https://forever1723.github.io/Slowly/#pair=A1B2C3&srv=http%3A%2F%2F10.114.123.115%3A8787%2F"],
+    ["安卓深链", "slowly://pair?token=A1B2C3&srv=http%3A%2F%2F10.114.123.115%3A8787%2F"],
+    ["较长的域名与地址", "https://averyverylongname.github.io/Long-Repo-Name/#pair=ABCDEF&srv=http%3A%2F%2F192.168.100.20%3A8787%2F"],
+  ];
+  for (const [label, text] of pairCases) {
+    try {
+      const enc = qr.encode(text, "M");
+      const dec = qr.decode(enc.modules);
+      ok(dec.text === text, label + "可往返（" + text.length + " 字符，版本 " + dec.version + "）",
+        "解回的是 " + JSON.stringify(dec.text));
+    } catch (e) {
+      ok(false, label + "可往返", e.message);
+    }
+  }
+}
+
 console.log("5) 纠错码字本身可被独立验证");
 {
   const enc = qr.encode("http://10.114.123.115:8787/", "M");
