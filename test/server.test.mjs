@@ -178,8 +178,19 @@ try {
   controller.abort();
   await ssePromise;
 
-  console.log("7) 二维码接口");
-  const qrResp = await fetch(BASE + "/api/qr");
+  /* 回归：静态资源曾经用 public, max-age=3600，于是改完代码、重启服务、
+     刷新页面，浏览器拿到的还是旧 app.js —— 界面看起来"改了却不生效"，
+     非常难判断（实测踩过：二维码区域一直是空白占位）。
+     这里要求所有前端资源都明确不缓存。 */
+  console.log("6b) 前端资源不被缓存");
+  for (const asset of ["/app.js", "/sync.js", "/index.html"]) {
+    const r = await fetch(BASE + asset);
+    const cc = String(r.headers.get("cache-control") || "");
+    ok(r.status === 200, asset + " 可访问", "HTTP " + r.status);
+    ok(/no-store|no-cache/.test(cc), asset + " 明确不缓存（避免改动不生效）", "实际：" + cc);
+  }
+
+  console.log("7) 二维码接口");  const qrResp = await fetch(BASE + "/api/qr");
   const svg = await qrResp.text();
   ok(qrResp.headers.get("content-type").includes("image/svg+xml"), "返回 SVG 类型");
   ok(svg.startsWith("<svg") && svg.includes("</svg>"), "SVG 完整");

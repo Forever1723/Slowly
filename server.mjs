@@ -431,7 +431,18 @@ async function serveStatic(req, res, pathname) {
     const ext = path.extname(target).toLowerCase();
     res.writeHead(200, {
       "content-type": MIME[ext] || "application/octet-stream",
-      "cache-control": ext === ".html" ? "no-cache" : "public, max-age=3600",
+      /*
+       * 一律不缓存。
+       *
+       * 原来 JS 用的是 public, max-age=3600 —— 于是改完代码、重启服务、
+       * 刷新页面，浏览器拿到的还是**一小时前的 app.js**，界面看起来
+       * "改了却不生效"，非常难判断（实测踩过：二维码区域一直是空白占位）。
+       * 这是本地自用的小工具，文件都在本机，重新读一次的成本可以忽略，
+       * 正确性远比省这一次读取重要。
+       */
+      "cache-control": "no-cache, no-store, must-revalidate",
+      "pragma": "no-cache",
+      "expires": "0",
       "content-length": data.length
     });
     res.end(data);
