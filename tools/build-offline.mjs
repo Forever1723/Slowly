@@ -169,7 +169,13 @@ cd android
 #   1. 在仓库的 Actions 页面点「Run workflow」手动触发
 #   2. 推送到 main 且改动涉及 android/、public/、tools/ 时自动触发
 #   3. 改到这个工作流文件本身时
-on:
+#
+# 注意 "on" 必须带引号：YAML 1.1 会把裸写的 on 解析成布尔值 true，
+# 而 GitHub 读的是字符串键 "on"。不加引号时整个触发器块失效 ——
+# 现象是 Actions 里能看到这个工作流、却永远不会运行，而且 API 会回
+# "Workflow does not have 'workflow_dispatch' trigger"。
+# 工作流名字退化成文件路径也是同一个原因。
+"on":
   workflow_dispatch:
   push:
     paths:
