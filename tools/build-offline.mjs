@@ -165,16 +165,12 @@ cd android
      改工作流时请同时更新这里，否则下次生成会把改动覆盖掉。 */
   const workflow = `name: Build Slowly APK
 
-# 手机端的安卓安装包。三种触发方式：
+# 手机端的安卓安装包。两种触发方式：
 #   1. 在仓库的 Actions 页面点「Run workflow」手动触发
 #   2. 推送到 main 且改动涉及 android/、public/、tools/ 时自动触发
-#   3. 改到这个工作流文件本身时
 #
-# 注意 "on" 必须带引号：YAML 1.1 会把裸写的 on 解析成布尔值 true，
-# 而 GitHub 读的是字符串键 "on"。不加引号时整个触发器块失效 ——
-# 现象是 Actions 里能看到这个工作流、却永远不会运行，而且 API 会回
-# "Workflow does not have 'workflow_dispatch' trigger"。
-# 工作流名字退化成文件路径也是同一个原因。
+# "on" 带引号：YAML 1.1 会把裸写的 on 解析成布尔值 true，
+# 而 GitHub 读的是字符串键 "on"。
 "on":
   workflow_dispatch:
   push:
@@ -194,7 +190,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # 工程目录可能在根，也可能在 Slowly/ 下，自动判断
-      - name: 定位工程目录
+      - name: Locate project root
         id: locate
         run: |
           set -e
@@ -203,27 +199,27 @@ jobs:
           elif [ -f Slowly/android/app/build.gradle ]; then
             echo "root=Slowly" >> "$GITHUB_OUTPUT"
           else
-            echo "没有找到 android/app/build.gradle" >&2
+            echo "android/app/build.gradle not found" >&2
             exit 1
           fi
 
-      - name: 安装 JDK 17
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
       # 缓存 Android SDK：首次要下几百 MB，缓存后后续构建快得多
-      - name: 缓存 Android SDK
+      - name: Cache Android SDK
         uses: actions/cache@v4
         with:
           path: /usr/local/lib/android/sdk
           key: android-sdk-\${{ runner.os }}-platform34-bt34
 
       # 不用 android-actions/setup-android：实测它会卡在交互式的许可确认上
-      # （日志里全是 "Accept? (y/N):" 却没有输入），导致这一步直接失败。
-      # 这里改成自己装命令行工具，并用 yes 非交互式接受全部许可。
-      - name: 安装 Android SDK（非交互）
+      # （日志里全是 "Accept? (y/N):" 却没有输入），让这一步直接失败。
+      # 这里自己装命令行工具，并用 yes 非交互式接受全部许可。
+      - name: Install Android SDK
         run: |
           set -e
           SDK_ROOT=/usr/local/lib/android/sdk
@@ -245,45 +241,21 @@ jobs:
 
       # 固定 Gradle 版本：AGP 8.5.2 需要 Gradle 8.7+。
       # 不能用 runner 上碰巧预装的那一版，否则版本一变整个构建就挂。
-      - name: 安装并固定 Gradle 8.7
+      - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
 
-      - name: 安装 Node（用来重新生成离线界面）
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       # 保证打进 APK 的 index.html 与 public/ 里的最新代码一致
-      - name: 重新生成离线界面
+      - name: Regenerate offline bundle
         run: node "\${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
 
-      # 依赖诊断：直接打印 classpath 上的每个文件。
-      # 之前的依赖树 grep 一直只能抓到命令回显，看不出真实来源 —— 这次让 Gradle
-      # 把**解析结果**列出来，谁在 classpath 上一目了然。
-      # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped。
-      - name: Dependency diagnosis
-        working-directory: \${{ steps.locate.outputs.root }}/android
-        run: |
-          cat >> app/build.gradle <<'EOF'
-
-// ↓↓↓ 临时诊断任务，由 CI 的 Dependency diagnosis 步骤调用 ↓↓↓
-tasks.register('printClasspath') {
-    doLast {
-        def cfg = configurations.findByName('releaseRuntimeClasspath')
-        if (cfg == null) { println 'NO releaseRuntimeClasspath'; return }
-        println '=== releaseRuntimeClasspath 上的文件（共 ' + cfg.files.size() + ' 个）==='
-        cfg.files.sort { it.name }.each { println '  ' + it.name + '   <-  ' + it.absolutePath }
-    }
-}
-EOF
-          gradle :app:printClasspath --no-daemon -q 2>&1 | head -60 || true
-          echo ""
-          echo "=== 工程里有没有源码/目录带进 kotlin ==="
-          ls -la libs 2>/dev/null || echo "(没有 libs 目录)"
-
-      - name: Build APK (release)
+      - name: Build release APK
         working-directory: \${{ steps.locate.outputs.root }}/android
         run: gradle assembleRelease --no-daemon --stacktrace
 
