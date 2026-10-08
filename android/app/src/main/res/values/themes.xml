@@ -1,7 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 用框架自带主题：本项目不依赖 AppCompat（原因见 app/build.gradle 的说明）。
-         NoActionBar 是为了让 WebView 占满整屏，界面自己的顶栏由网页负责。 -->
     <style name="Theme.Slowly" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowBackground">@color/slowly_linen</item>
         <item name="android:statusBarColor">@color/slowly_linen</item>

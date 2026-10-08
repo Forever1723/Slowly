@@ -19,9 +19,8 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            /* 这个 App 不是给应用商店用的，自己装着用 —— 用 debug 签名即可，
-               省掉配密钥库的麻烦。注意：这样签出来的包不能上架，
-               也不能覆盖安装用正式签名的版本。 */
+            /* 自己装着用，不打算上架 —— 用 debug 签名省掉配密钥库。
+               代价：不能上架，也不能覆盖安装用正式签名的版本。 */
             signingConfig signingConfigs.debug
         }
     }
@@ -33,33 +32,28 @@ android {
 }
 
 /*
- * 这里刻意**不依赖任何 AndroidX 库**。
+ * 刻意不依赖任何 AndroidX 库。
  *
- * 之前的依赖是 appcompat + webkit，CI 一直失败在重复类检查：
+ * 一开始用的是 appcompat + webkit，结果 CI 反复失败在重复类检查：
  *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
  *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
  *     kotlin-stdlib-jdk8-1.6.21.jar   （androidx.lifecycle 带进来的）
- *
- * 用 dependencyInsight 查到的完整因果链：
+ * dependencyInsight 查出的链条是：
  *   kotlin-stdlib-jdk8:1.6.21
  *   +--- kotlinx-coroutines-android:1.6.4
  *        +--- androidx.lifecycle:lifecycle-common:2.6.2
  *             +--- androidx.appcompat:appcompat:1.7.0
+ * force / eachDependency / 各种 exclude 都试过，都没能让它消失。
  *
- * 试过的办法（resolutionStrategy.force、eachDependency、在 dependencies 上
- * exclude、configurations 全局 exclude）**都没能让它消失**，每一轮 CI 都是
- * 同一个错。继续和依赖解析纠缠性价比太低，于是换了个更彻底、也更贴合本项目的
- * 方向：
+ * 而这个壳工程本身就是个 WebView 容器，一行 Kotlin 都没有，界面全在
+ * assets/index.html 里：appcompat 只用到 AppCompatActivity 一个基类，
+ * webkit 完全没用到（WebView 的 API 都来自 Android 框架本身）。
+ * 两者都不需要，去掉之后依赖图里不再有任何 Kotlin 标准库，
+ * 重复类的问题从根上不存在。
  *
- * 这个 App 本身就是个 WebView 外壳，一行 Kotlin 都没有，界面全在
- * assets/index.html 里。检查代码后发现 —— appcompat 只用到
- * AppCompatActivity 一个基类，webkit **完全没用到**（WebView 的 API 都来自
- * Android 框架本身）。两者去掉之后，依赖图里不再有任何 Kotlin 标准库，
- * "重复类"这个问题从根上不存在了。
- *
- * 代价：失去 AppCompat 的向后兼容垫片，MainActivity 改为继承框架的 Activity，
- * 主题也从 Theme.AppCompat 换成 @android:style/Theme.DeviceDefault.Light.NoActionBar。
- * 本项目 minSdk 是 24，那些垫片带来的收益本来就很小。
+ * 配套改动：MainActivity 继承框架的 Activity，主题换成
+ * @android:style/Theme.DeviceDefault.Light.NoActionBar。
+ * 本项目 minSdk 是 24，失去 AppCompat 垫片的代价很小。
  */
 dependencies {
 }

@@ -103,8 +103,8 @@ function buildAndroid() {
 1. 注册/登录 GitHub，新建一个仓库（私有也行）
 2. 把整个 \`Slowly\` 文件夹 push 上去
 3. 仓库里点 **Actions** → 选 **Build Slowly APK** → **Run workflow**
-4. 等 3~5 分钟，在该次运行的 **Artifacts** 里下载 \`slowly-debug-apk\`
-5. 解压得到 \`app-debug.apk\`，发到手机上安装（首次要允许「安装未知来源应用」）
+4. 等 3~5 分钟，在该次运行的 **Artifacts** 里下载 \`slowly-apk\`
+5. 解压得到 \`app-release.apk\`，发到手机上安装（首次要允许「安装未知来源应用」）
 
 工作流文件已经放在 \`.github/workflows/build-apk.yml\`，不用自己写。
 
@@ -116,13 +116,13 @@ function buildAndroid() {
 2. \`File → Open\`，选中这个 \`android\` 目录
 3. 等它自动同步 Gradle（第一次要下载依赖，需要网络）
 4. \`Build → Build Bundle(s) / APK(s) → Build APK(s)\`
-5. 产物在 \`app/build/outputs/apk/debug/app-debug.apk\`
+5. 产物在 \`app/build/outputs/apk/release/app-release.apk\`
 
 命令行也行：
 
 \`\`\`bash
 cd android
-./gradlew assembleDebug        # Windows 用 gradlew.bat
+./gradlew assembleRelease        # Windows 用 gradlew.bat
 \`\`\`
 
 ---
@@ -159,8 +159,16 @@ cd android
        - .github/workflows/          Slowly 文件夹就是仓库根目录时用这份
        - android/.github/workflows/  只把 android 的内容当仓库时用这份
      工作流自己会判断工程在根目录还是 Slowly/ 下。 */
+  /* GitHub Actions 工作流。
+     GitHub 只执行仓库根目录 .github/workflows/ 下的文件，所以只生成这一份。
+     这份内容由仓库里的 .github/workflows/build-apk.yml 同步而来 ——
+     改工作流时请同时更新这里，否则下次生成会把改动覆盖掉。 */
   const workflow = `name: Build Slowly APK
 
+# 手机端的安卓安装包。三种触发方式：
+#   1. 在仓库的 Actions 页面点「Run workflow」手动触发
+#   2. 推送到 main 且改动涉及 android/、public/、tools/ 时自动触发
+#   3. 改到这个工作流文件本身时
 on:
   workflow_dispatch:
   push:
@@ -179,26 +187,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # 仓库里 android/ 可能在根目录，也可能在 Slowly/ 下，这里自动判断
+      # 工程目录可能在根，也可能在 Slowly/ 下，自动判断
       - name: 定位工程目录
         id: locate
         run: |
+          set -e
           if [ -f android/app/build.gradle ]; then
-            echo "root=." >> $GITHUB_OUTPUT
+            echo "root=." >> "$GITHUB_OUTPUT"
           elif [ -f Slowly/android/app/build.gradle ]; then
-            echo "root=Slowly" >> $GITHUB_OUTPUT
+            echo "root=Slowly" >> "$GITHUB_OUTPUT"
           else
             echo "没有找到 android/app/build.gradle" >&2
             exit 1
           fi
-
-      - name: 安装 Node（用来重新生成离线界面）
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: 重新生成离线界面，保证 APK 里是最新代码
-        run: node "\${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
 
       - name: 安装 JDK 17
         uses: actions/setup-java@v4
@@ -206,22 +207,93 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: 安装 Android SDK
-        uses: android-actions/setup-android@v3
+      # 缓存 Android SDK：首次要下几百 MB，缓存后后续构建快得多
+      - name: 缓存 Android SDK
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk
+          key: android-sdk-\${{ runner.os }}-platform34-bt34
 
-      - name: 编译 Debug APK
+      # 不用 android-actions/setup-android：实测它会卡在交互式的许可确认上
+      # （日志里全是 "Accept? (y/N):" 却没有输入），导致这一步直接失败。
+      # 这里改成自己装命令行工具，并用 yes 非交互式接受全部许可。
+      - name: 安装 Android SDK（非交互）
+        run: |
+          set -e
+          SDK_ROOT=/usr/local/lib/android/sdk
+          if [ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            mkdir -p "$SDK_ROOT/cmdline-tools"
+            cd /tmp
+            curl -fsSL -o tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+            unzip -q tools.zip -d "$SDK_ROOT/cmdline-tools"
+            mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          fi
+          export ANDROID_HOME="$SDK_ROOT"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      # 固定 Gradle 版本：AGP 8.5.2 需要 Gradle 8.7+。
+      # 不能用 runner 上碰巧预装的那一版，否则版本一变整个构建就挂。
+      - name: 安装并固定 Gradle 8.7
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.7'
+
+      - name: 安装 Node（用来重新生成离线界面）
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 保证打进 APK 的 index.html 与 public/ 里的最新代码一致
+      - name: 重新生成离线界面
+        run: node "\${{ steps.locate.outputs.root }}/tools/build-offline.mjs"
+
+      # 依赖诊断：直接打印 classpath 上的每个文件。
+      # 之前的依赖树 grep 一直只能抓到命令回显，看不出真实来源 —— 这次让 Gradle
+      # 把**解析结果**列出来，谁在 classpath 上一目了然。
+      # 步骤名用纯 ASCII —— 实测带中文的步骤名会被 GitHub 记成 skipped。
+      - name: Dependency diagnosis
         working-directory: \${{ steps.locate.outputs.root }}/android
-        run: gradle assembleDebug --no-daemon
+        run: |
+          cat >> app/build.gradle <<'EOF'
 
-      - name: 上传 APK
+// ↓↓↓ 临时诊断任务，由 CI 的 Dependency diagnosis 步骤调用 ↓↓↓
+tasks.register('printClasspath') {
+    doLast {
+        def cfg = configurations.findByName('releaseRuntimeClasspath')
+        if (cfg == null) { println 'NO releaseRuntimeClasspath'; return }
+        println '=== releaseRuntimeClasspath 上的文件（共 ' + cfg.files.size() + ' 个）==='
+        cfg.files.sort { it.name }.each { println '  ' + it.name + '   <-  ' + it.absolutePath }
+    }
+}
+EOF
+          gradle :app:printClasspath --no-daemon -q 2>&1 | head -60 || true
+          echo ""
+          echo "=== 工程里有没有源码/目录带进 kotlin ==="
+          ls -la libs 2>/dev/null || echo "(没有 libs 目录)"
+
+      - name: Build APK (release)
+        working-directory: \${{ steps.locate.outputs.root }}/android
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Show artifacts
+        run: find "\${{ steps.locate.outputs.root }}/android/app/build/outputs/apk" -name '*.apk' -exec ls -lh {} \\;
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: slowly-debug-apk
-          path: \${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/debug/*.apk
+          name: slowly-apk
+          path: \${{ steps.locate.outputs.root }}/android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 `;
+  /* 只写仓库根目录这一份 —— GitHub 只执行 .github/workflows/ 下的工作流，
+     放在 android/.github/ 下永远不会运行，只会让人以为有两条构建途径。 */
   made.push(writeFile(".github/workflows/build-apk.yml", workflow));
-  made.push(writeFile("android/.github/workflows/build-apk.yml", workflow));
 
   /* Gradle 工程文件 */
   made.push(writeFile("android/settings.gradle", `pluginManagement {
@@ -274,6 +346,9 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            /* 自己装着用，不打算上架 —— 用 debug 签名省掉配密钥库。
+               代价：不能上架，也不能覆盖安装用正式签名的版本。 */
+            signingConfig signingConfigs.debug
         }
     }
 
@@ -283,9 +358,31 @@ android {
     }
 }
 
+/*
+ * 刻意不依赖任何 AndroidX 库。
+ *
+ * 一开始用的是 appcompat + webkit，结果 CI 反复失败在重复类检查：
+ *   Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt
+ *     kotlin-stdlib-1.8.22.jar        （androidx.webkit 带进来的）
+ *     kotlin-stdlib-jdk8-1.6.21.jar   （androidx.lifecycle 带进来的）
+ * dependencyInsight 查出的链条是：
+ *   kotlin-stdlib-jdk8:1.6.21
+ *   +--- kotlinx-coroutines-android:1.6.4
+ *        +--- androidx.lifecycle:lifecycle-common:2.6.2
+ *             +--- androidx.appcompat:appcompat:1.7.0
+ * force / eachDependency / 各种 exclude 都试过，都没能让它消失。
+ *
+ * 而这个壳工程本身就是个 WebView 容器，一行 Kotlin 都没有，界面全在
+ * assets/index.html 里：appcompat 只用到 AppCompatActivity 一个基类，
+ * webkit 完全没用到（WebView 的 API 都来自 Android 框架本身）。
+ * 两者都不需要，去掉之后依赖图里不再有任何 Kotlin 标准库，
+ * 重复类的问题从根上不存在。
+ *
+ * 配套改动：MainActivity 继承框架的 Activity，主题换成
+ * @android:style/Theme.DeviceDefault.Light.NoActionBar。
+ * 本项目 minSdk 是 24，失去 AppCompat 垫片的代价很小。
+ */
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'androidx.webkit:webkit:1.11.0'
 }
 `));
 
@@ -335,6 +432,7 @@ dependencies {
   /* MainActivity：WebView 壳 + 给网页用的原生小能力 */
   made.push(writeFile(pkgDir + "/MainActivity.java", `package com.slowly.app;
 
+import android.app.Activity;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.VibrationEffect;
@@ -346,14 +444,15 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
-import androidx.appcompat.app.AppCompatActivity;
-
 /**
  * Slowly 的安卓外壳。
  * 界面是打包在 assets/index.html 里的离线版：不连电脑也能记，
  * 连上电脑点一次「立即同步」就把两边合并。
+ *
+ * 继承框架自带的 Activity —— 本项目不依赖 AppCompat，
+ * 原因见 app/build.gradle 里的说明。
  */
-public class MainActivity extends AppCompatActivity {
+public class MainActivity extends Activity {
 
     private WebView web;
 
@@ -458,7 +557,7 @@ public class MainActivity extends AppCompatActivity {
 
   made.push(writeFile(res + "/values/themes.xml", `<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Slowly" parent="Theme.AppCompat.Light.NoActionBar">
+    <style name="Theme.Slowly" parent="@android:style/Theme.DeviceDefault.Light.NoActionBar">
         <item name="android:windowBackground">@color/slowly_linen</item>
         <item name="android:statusBarColor">@color/slowly_linen</item>
         <item name="android:navigationBarColor">@color/slowly_linen</item>

@@ -13,8 +13,8 @@
 1. 注册/登录 GitHub，新建一个仓库（私有也行）
 2. 把整个 `Slowly` 文件夹 push 上去
 3. 仓库里点 **Actions** → 选 **Build Slowly APK** → **Run workflow**
-4. 等 3~5 分钟，在该次运行的 **Artifacts** 里下载 `slowly-debug-apk`
-5. 解压得到 `app-debug.apk`，发到手机上安装（首次要允许「安装未知来源应用」）
+4. 等 3~5 分钟，在该次运行的 **Artifacts** 里下载 `slowly-apk`
+5. 解压得到 `app-release.apk`，发到手机上安装（首次要允许「安装未知来源应用」）
 
 工作流文件已经放在 `.github/workflows/build-apk.yml`，不用自己写。
 
@@ -26,13 +26,13 @@
 2. `File → Open`，选中这个 `android` 目录
 3. 等它自动同步 Gradle（第一次要下载依赖，需要网络）
 4. `Build → Build Bundle(s) / APK(s) → Build APK(s)`
-5. 产物在 `app/build/outputs/apk/debug/app-debug.apk`
+5. 产物在 `app/build/outputs/apk/release/app-release.apk`
 
 命令行也行：
 
 ```bash
 cd android
-./gradlew assembleDebug        # Windows 用 gradlew.bat
+./gradlew assembleRelease        # Windows 用 gradlew.bat
 ```
 
 ---
